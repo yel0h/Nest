@@ -109,13 +109,14 @@ uint8_t Cpu6502::OP_BRK()
 {
     pc++;
 
-    SetFlag(InterruptOff, true);
     Write(StackBase + sp--, (pc >> 8) & 0x00FF);
     Write(StackBase + sp--, pc & 0x00FF);
 
     SetFlag(Break, true);
+    SetFlag(Unused, true);
     Write(StackBase + sp--, status);
     SetFlag(Break, false);
+    SetFlag(InterruptOff, true);
 
     pc = (uint16_t)Read(0xFFFE) | ((uint16_t)Read(0xFFFF) << 8);
     return 0;

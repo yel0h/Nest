@@ -118,8 +118,8 @@ void Cpu6502::Irq()
 
     SetFlag(Break, false);
     SetFlag(Unused, true);
-    SetFlag(InterruptOff, true);
     Write(StackBase + sp--, status);
+    SetFlag(InterruptOff, true);
 
     addrAbs = IrqVector;
     const uint16_t lo = Read(addrAbs);
@@ -136,8 +136,8 @@ void Cpu6502::Nmi()
 
     SetFlag(Break, false);
     SetFlag(Unused, true);
-    SetFlag(InterruptOff, true);
     Write(StackBase + sp--, status);
+    SetFlag(InterruptOff, true);
 
     addrAbs = NmiVector;
     const uint16_t lo = Read(addrAbs);
