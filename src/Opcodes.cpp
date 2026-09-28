@@ -23,29 +23,42 @@ void Cpu6502::Branch(bool condition)
 uint8_t Cpu6502::OP_ADC()
 {
     Fetch();
-    const uint16_t sum = (uint16_t)a + (uint16_t)fetched + (uint16_t)GetFlag(Carry);
 
-    SetFlag(Carry, sum > 255);
-    SetFlag(Zero, (sum & 0x00FF) == 0);
-    SetFlag(Negative, sum & 0x0080);
-    SetFlag(Overflow, (~((uint16_t)a ^ (uint16_t)fetched) & ((uint16_t)a ^ sum)) & 0x0080);
+    const uint8_t operandBefore = a;
+    const uint16_t carryIn = GetFlag(Carry) ? 1 : 0;
+    const uint16_t widenedSum = (uint16_t)operandBefore + (uint16_t)fetched + carryIn;
+    const uint8_t result = (uint8_t)(widenedSum & 0x00FF);
 
-    a = sum & 0x00FF;
+    const bool inputsShareSign = ((operandBefore ^ fetched) & 0x80) == 0;
+    const bool resultChangedSign = ((operandBefore ^ result) & 0x80) != 0;
+
+    SetFlag(Carry, widenedSum > 0x00FF);
+    SetFlag(Zero, result == 0x00);
+    SetFlag(Negative, result & 0x80);
+    SetFlag(Overflow, inputsShareSign && resultChangedSign);
+
+    a = result;
     return 1;
 }
 
 uint8_t Cpu6502::OP_SBC()
 {
     Fetch();
-    const uint16_t value = ((uint16_t)fetched) ^ 0x00FF;
-    const uint16_t sum = (uint16_t)a + value + (uint16_t)GetFlag(Carry);
 
-    SetFlag(Carry, sum & 0xFF00);
-    SetFlag(Zero, (sum & 0x00FF) == 0);
-    SetFlag(Negative, sum & 0x0080);
-    SetFlag(Overflow, (sum ^ (uint16_t)a) & (sum ^ value) & 0x0080);
+    const uint8_t operandBefore = a;
+    const int16_t borrowIn = GetFlag(Carry) ? 0 : 1;
+    const int16_t signedDifference = (int16_t)operandBefore - (int16_t)fetched - borrowIn;
+    const uint8_t result = (uint8_t)(signedDifference & 0x00FF);
 
-    a = sum & 0x00FF;
+    const bool inputsDifferSign = ((operandBefore ^ fetched) & 0x80) != 0;
+    const bool resultChangedSign = ((operandBefore ^ result) & 0x80) != 0;
+
+    SetFlag(Carry, signedDifference >= 0);
+    SetFlag(Zero, result == 0x00);
+    SetFlag(Negative, result & 0x80);
+    SetFlag(Overflow, inputsDifferSign && resultChangedSign);
+
+    a = result;
     return 1;
 }
 
