@@ -60,6 +60,7 @@ void Ppu2C02::Clock()
         if (scanline >= kScanlinesPerFrame)
         {
             scanline = -1;
+            RenderFrame();
             frameComplete = true;
         }
     }
@@ -89,7 +90,9 @@ uint8_t Ppu2C02::CpuRead(uint16_t address, bool readOnly)
             addressLatch = false;
             break;
         case 0x0003: break;
-        case 0x0004: break;
+        case 0x0004:
+            data = oam[oamAddress];
+            break;
         case 0x0005: break;
         case 0x0006: break;
         case 0x0007:
@@ -121,8 +124,13 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
             maskRegister = data;
             break;
         case 0x0002: break;
-        case 0x0003: break;
-        case 0x0004: break;
+        case 0x0003:
+            oamAddress = data;
+            break;
+        case 0x0004:
+            oam[oamAddress] = data;
+            ++oamAddress;
+            break;
         case 0x0005: break;
         case 0x0006:
             if (!addressLatch)
@@ -273,6 +281,155 @@ PixelColor Ppu2C02::GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue)
 {
     const uint16_t entryAddress = static_cast<uint16_t>(0x3F00 + (paletteId << 2) + pixelValue);
     return palette[PpuRead(entryAddress) & 0x3F];
+}
+
+void Ppu2C02::RenderFrame()
+{
+    RenderBackgroundLayer();
+    RenderSpriteLayer();
+}
+
+uint8_t Ppu2C02::GetBackgroundPaletteId(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow)
+{
+    logicalTable &= 0x03;
+
+    const uint16_t attributeAddress = static_cast<uint16_t>(
+        0x2000 + logicalTable * 0x0400 + 0x03C0 + (tileRow / 4) * 8 + (tileColumn / 4));
+    const uint8_t attribute = PpuRead(attributeAddress, true);
+
+    uint8_t shift = 0;
+    if ((tileColumn % 4) >= 2)
+        shift += 2;
+    if ((tileRow % 4) >= 2)
+        shift += 4;
+
+    return (attribute >> shift) & 0x03;
+}
+
+void Ppu2C02::RenderBackgroundLayer()
+{
+    const PixelColor backdrop = GetColorFromPalette(0, 0);
+    backgroundOpaque.fill(false);
+
+    if (!GetMaskFlag(MaskFlag::RenderBackground))
+    {
+        screen.fill(backdrop);
+        return;
+    }
+
+    const uint8_t baseNameTable = static_cast<uint8_t>(
+        (GetControlFlag(ControlFlag::NametableX) ? 1 : 0) | (GetControlFlag(ControlFlag::NametableY) ? 2 : 0));
+    const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
+
+    constexpr int tilesPerRow = 32;
+    constexpr int tilesPerColumn = 30;
+    constexpr int tileSize = 8;
+
+    for (int tileRow = 0; tileRow < tilesPerColumn; ++tileRow)
+    {
+        for (int tileColumn = 0; tileColumn < tilesPerRow; ++tileColumn)
+        {
+            const uint8_t tileId = GetNameTableEntry(baseNameTable, static_cast<uint8_t>(tileColumn),
+                                                       static_cast<uint8_t>(tileRow));
+            const uint8_t paletteId = GetBackgroundPaletteId(baseNameTable, static_cast<uint8_t>(tileColumn),
+                                                                static_cast<uint8_t>(tileRow));
+            const uint16_t tileBase = static_cast<uint16_t>(patternTableBase + tileId * 16);
+
+            for (int row = 0; row < tileSize; ++row)
+            {
+                const uint8_t planeLo = PpuRead(static_cast<uint16_t>(tileBase + row));
+                const uint8_t planeHi = PpuRead(static_cast<uint16_t>(tileBase + row + tileSize));
+
+                for (int col = 0; col < tileSize; ++col)
+                {
+                    const uint8_t bit = static_cast<uint8_t>(7 - col);
+                    const uint8_t pixelValue =
+                        static_cast<uint8_t>(((planeHi >> bit) & 0x01) << 1 | ((planeLo >> bit) & 0x01));
+
+                    const int pixelX = tileColumn * tileSize + col;
+                    const int pixelY = tileRow * tileSize + row;
+
+                    if (pixelValue == 0)
+                    {
+                        PlotPixel(pixelX, pixelY, backdrop);
+                        continue;
+                    }
+
+                    backgroundOpaque[static_cast<size_t>(pixelY) * ScreenWidth + pixelX] = true;
+                    PlotPixel(pixelX, pixelY, GetColorFromPalette(paletteId, pixelValue));
+                }
+            }
+        }
+    }
+}
+
+void Ppu2C02::RenderSpriteLayer()
+{
+    if (!GetMaskFlag(MaskFlag::RenderSprites))
+        return;
+
+    const bool tallSprites = GetControlFlag(ControlFlag::SpriteSize);
+    const uint16_t spritePatternTableBase = GetControlFlag(ControlFlag::SpritePatternTable) ? 0x1000 : 0x0000;
+    const int spriteHeight = tallSprites ? 16 : 8;
+
+    for (int i = 63; i >= 0; --i)
+    {
+        const uint8_t spriteY = oam[i * 4 + 0];
+        const uint8_t tileIndex = oam[i * 4 + 1];
+        const uint8_t attribute = oam[i * 4 + 2];
+        const uint8_t spriteX = oam[i * 4 + 3];
+
+        const bool flipHorizontal = (attribute & 0x40) != 0;
+        const bool flipVertical = (attribute & 0x80) != 0;
+        const bool behindBackground = (attribute & 0x20) != 0;
+        const uint8_t paletteId = static_cast<uint8_t>(4 + (attribute & 0x03));
+
+        uint16_t tileBase;
+        if (tallSprites)
+        {
+            const uint16_t table = (tileIndex & 0x01) ? 0x1000 : 0x0000;
+            tileBase = static_cast<uint16_t>(table + (tileIndex & 0xFE) * 16);
+        }
+        else
+        {
+            tileBase = static_cast<uint16_t>(spritePatternTableBase + tileIndex * 16);
+        }
+
+        for (int row = 0; row < spriteHeight; ++row)
+        {
+            int sampleRow = flipVertical ? (spriteHeight - 1 - row) : row;
+            uint16_t rowTileBase = tileBase;
+            if (tallSprites && sampleRow >= 8)
+            {
+                rowTileBase += 16;
+                sampleRow -= 8;
+            }
+
+            const uint8_t planeLo = PpuRead(static_cast<uint16_t>(rowTileBase + sampleRow));
+            const uint8_t planeHi = PpuRead(static_cast<uint16_t>(rowTileBase + sampleRow + 8));
+
+            for (int col = 0; col < 8; ++col)
+            {
+                const uint8_t bit = static_cast<uint8_t>(flipHorizontal ? col : (7 - col));
+                const uint8_t pixelValue =
+                    static_cast<uint8_t>(((planeHi >> bit) & 0x01) << 1 | ((planeLo >> bit) & 0x01));
+
+                if (pixelValue == 0)
+                    continue;
+
+                const int pixelX = spriteX + col;
+                const int pixelY = spriteY + 1 + row;
+
+                if (pixelX < 0 || pixelX >= ScreenWidth || pixelY < 0 || pixelY >= ScreenHeight)
+                    continue;
+
+                if (behindBackground && backgroundOpaque[static_cast<size_t>(pixelY) * ScreenWidth + pixelX])
+                    continue;
+
+                PlotPixel(pixelX, pixelY, GetColorFromPalette(paletteId, pixelValue));
+            }
+        }
+    }
 }
 
 void Ppu2C02::RenderPatternTable(uint8_t tableIndex, uint8_t paletteId)

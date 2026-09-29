@@ -50,6 +50,14 @@ void Bus::CpuWrite(uint16_t address, uint8_t data)
     {
         ppu.CpuWrite(address & 0x0007, data);
     }
+    else if (address == 0x4014)
+    {
+        const uint16_t page = static_cast<uint16_t>(data) << 8;
+        for (uint16_t i = 0; i <= 0xFF; ++i)
+        {
+            ppu.WriteOamByte(static_cast<uint8_t>(i), CpuRead(static_cast<uint16_t>(page + i)));
+        }
+    }
 }
 
 uint8_t Bus::CpuRead(uint16_t address, bool readOnly)

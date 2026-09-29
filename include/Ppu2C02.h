@@ -66,6 +66,8 @@ public:
     uint8_t PpuRead(uint16_t address, bool readOnly = false);
     void PpuWrite(uint16_t address, uint8_t data);
 
+    void WriteOamByte(uint8_t address, uint8_t data) { oam[address] = data; }
+
     const ScreenBuffer& GetScreen() const { return screen; }
     const PatternTableBuffer& GetPatternTableView(uint8_t index) const { return patternTableView[index & 0x01]; }
 
@@ -94,12 +96,20 @@ public:
 private:
     void PlotPixel(int x, int y, const PixelColor& color);
 
+    void RenderFrame();
+    void RenderBackgroundLayer();
+    void RenderSpriteLayer();
+    uint8_t GetBackgroundPaletteId(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow);
+
     std::shared_ptr<Cartridge> cartridge;
 
     std::array<std::array<uint8_t, 1024>, 2> nameTable{};
     std::array<uint8_t, 32> paletteRam{};
 
     std::array<std::array<uint8_t, 4096>, 2> patternMemory{};
+
+    std::array<uint8_t, 256> oam{};
+    uint8_t oamAddress = 0x00;
 
     std::array<PixelColor, 64> palette{};
 
@@ -112,6 +122,7 @@ private:
     uint16_t vramAddress = 0x0000;
 
     ScreenBuffer screen{};
+    std::array<bool, ScreenWidth * ScreenHeight> backgroundOpaque{};
     std::array<PatternTableBuffer, 2> patternTableView{};
 
     int16_t scanline = -1;
