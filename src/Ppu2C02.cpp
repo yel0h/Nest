@@ -116,6 +116,25 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
     }
 }
 
+namespace
+{
+    uint8_t ResolvePaletteRamIndex(uint16_t address)
+    {
+        uint16_t index = address & 0x001F;
+        if (index == 0x10 || index == 0x14 || index == 0x18 || index == 0x1C)
+            index &= 0x000F;
+        return static_cast<uint8_t>(index);
+    }
+
+    uint8_t ResolveNameTableIndex(uint16_t offset, Cartridge::Mirror mirror)
+    {
+        const uint8_t quadrant = static_cast<uint8_t>(offset >> 10);
+        if (mirror == Cartridge::Mirror::Vertical)
+            return quadrant & 0x01;
+        return quadrant >> 1;
+    }
+}
+
 uint8_t Ppu2C02::PpuRead(uint16_t address, bool readOnly)
 {
     (void)readOnly;
@@ -127,6 +146,21 @@ uint8_t Ppu2C02::PpuRead(uint16_t address, bool readOnly)
     if (cartridge && cartridge->PpuRead(address, data))
         return data;
 
+    if (address <= 0x1FFF)
+    {
+        data = patternMemory[(address >> 12) & 0x01][address & 0x0FFF];
+    }
+    else if (address <= 0x3EFF)
+    {
+        const uint16_t offset = address & 0x0FFF;
+        const uint8_t table = ResolveNameTableIndex(offset, cartridge ? cartridge->GetMirror() : Cartridge::Mirror::Horizontal);
+        data = nameTable[table][offset & 0x03FF];
+    }
+    else
+    {
+        data = paletteRam[ResolvePaletteRamIndex(address)];
+    }
+
     return data;
 }
 
@@ -136,4 +170,63 @@ void Ppu2C02::PpuWrite(uint16_t address, uint8_t data)
 
     if (cartridge && cartridge->PpuWrite(address, data))
         return;
+
+    if (address <= 0x1FFF)
+    {
+        patternMemory[(address >> 12) & 0x01][address & 0x0FFF] = data;
+    }
+    else if (address <= 0x3EFF)
+    {
+        const uint16_t offset = address & 0x0FFF;
+        const uint8_t table = ResolveNameTableIndex(offset, cartridge ? cartridge->GetMirror() : Cartridge::Mirror::Horizontal);
+        nameTable[table][offset & 0x03FF] = data;
+    }
+    else
+    {
+        paletteRam[ResolvePaletteRamIndex(address)] = data;
+    }
+}
+
+PixelColor Ppu2C02::GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue)
+{
+    const uint16_t entryAddress = static_cast<uint16_t>(0x3F00 + (paletteId << 2) + pixelValue);
+    return palette[PpuRead(entryAddress) & 0x3F];
+}
+
+void Ppu2C02::RenderPatternTable(uint8_t tableIndex, uint8_t paletteId)
+{
+    tableIndex &= 0x01;
+    paletteId &= 0x07;
+
+    constexpr int tilesPerSide = 16;
+    constexpr int tileSize = 8;
+    constexpr int bytesPerTile = 16;
+
+    for (int tileY = 0; tileY < tilesPerSide; ++tileY)
+    {
+        for (int tileX = 0; tileX < tilesPerSide; ++tileX)
+        {
+            const uint16_t tileOffset = static_cast<uint16_t>((tileY * tilesPerSide + tileX) * bytesPerTile);
+            const uint16_t tileBase = static_cast<uint16_t>(tableIndex * 0x1000 + tileOffset);
+
+            for (int row = 0; row < tileSize; ++row)
+            {
+                uint8_t planeLo = PpuRead(static_cast<uint16_t>(tileBase + row));
+                uint8_t planeHi = PpuRead(static_cast<uint16_t>(tileBase + row + tileSize));
+
+                for (int col = 0; col < tileSize; ++col)
+                {
+                    const uint8_t pixelValue = static_cast<uint8_t>((planeLo & 0x01) | ((planeHi & 0x01) << 1));
+                    planeLo >>= 1;
+                    planeHi >>= 1;
+
+                    const int pixelX = tileX * tileSize + (tileSize - 1 - col);
+                    const int pixelY = tileY * tileSize + row;
+
+                    patternTableView[tableIndex][static_cast<size_t>(pixelY) * PatternTableSize + pixelX] =
+                        GetColorFromPalette(paletteId, pixelValue);
+                }
+            }
+        }
+    }
 }

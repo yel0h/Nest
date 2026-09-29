@@ -39,6 +39,10 @@ public:
     const ScreenBuffer& GetNameTableView(uint8_t index) const { return nameTableView[index & 0x01]; }
     const PatternTableBuffer& GetPatternTableView(uint8_t index) const { return patternTableView[index & 0x01]; }
 
+    void RenderPatternTable(uint8_t tableIndex, uint8_t paletteId);
+
+    PixelColor GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue);
+
     bool FrameComplete() const { return frameComplete; }
     void ClearFrameComplete() { frameComplete = false; }
 

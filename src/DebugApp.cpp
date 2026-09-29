@@ -15,13 +15,27 @@ namespace
     constexpr int kScreenMarginY = 20;
     constexpr int kSidePanelWidth = 260;
 
+    constexpr int kPatternTableScale = 1;
+    constexpr int kPatternTableGap = 12;
+    constexpr int kPatternPanelHeight = 40 + Ppu2C02::PatternTableSize * kPatternTableScale + 30;
+
     constexpr int kWindowWidth =
         kScreenMarginX * 2 + Ppu2C02::ScreenWidth * kPixelScale + kSidePanelWidth;
-    constexpr int kWindowHeight = kScreenMarginY * 2 + Ppu2C02::ScreenHeight * kPixelScale;
+    constexpr int kWindowHeight =
+        kScreenMarginY * 2 + Ppu2C02::ScreenHeight * kPixelScale + kPatternPanelHeight;
 
     std::array<Color, Ppu2C02::ScreenWidth * Ppu2C02::ScreenHeight> ToRaylibPixels(const Ppu2C02::ScreenBuffer& src)
     {
         std::array<Color, Ppu2C02::ScreenWidth * Ppu2C02::ScreenHeight> out{};
+        for (size_t i = 0; i < src.size(); ++i)
+            out[i] = Color{src[i].r, src[i].g, src[i].b, 255};
+        return out;
+    }
+
+    std::array<Color, Ppu2C02::PatternTableSize * Ppu2C02::PatternTableSize> ToRaylibPixels(
+        const Ppu2C02::PatternTableBuffer& src)
+    {
+        std::array<Color, Ppu2C02::PatternTableSize * Ppu2C02::PatternTableSize> out{};
         for (size_t i = 0; i < src.size(); ++i)
             out[i] = Color{src[i].r, src[i].g, src[i].b, 255};
         return out;
@@ -105,6 +119,55 @@ namespace
         DrawText("[SPACE] Run / pause", x, y, 18, GRAY);
         y += 22;
         DrawText("[R] Reset", x, y, 18, GRAY);
+        y += 22;
+        DrawText("[P] Cycle palette", x, y, 18, GRAY);
+    }
+
+    void DrawPaletteSwatches(Ppu2C02& ppu, uint8_t selectedPalette, int x, int y)
+    {
+        constexpr int swatchSize = 12;
+        constexpr int paletteGap = 6;
+
+        for (int paletteId = 0; paletteId < 8; ++paletteId)
+        {
+            const int paletteX = x + paletteId * (swatchSize * 4 + paletteGap);
+
+            for (int colorSlot = 0; colorSlot < 4; ++colorSlot)
+            {
+                const PixelColor pixel = ppu.GetColorFromPalette(static_cast<uint8_t>(paletteId),
+                                                                   static_cast<uint8_t>(colorSlot));
+                DrawRectangle(paletteX + colorSlot * swatchSize, y, swatchSize, swatchSize,
+                              Color{pixel.r, pixel.g, pixel.b, 255});
+            }
+
+            if (paletteId == selectedPalette)
+                DrawRectangleLines(paletteX - 1, y - 1, swatchSize * 4 + 2, swatchSize + 2, RAYWHITE);
+        }
+    }
+
+    void DrawPatternPanel(Bus& nes, Texture2D& leftTable, Texture2D& rightTable, uint8_t selectedPalette,
+                           int x, int y)
+    {
+        nes.ppu.RenderPatternTable(0, selectedPalette);
+        nes.ppu.RenderPatternTable(1, selectedPalette);
+
+        const auto leftPixels = ToRaylibPixels(nes.ppu.GetPatternTableView(0));
+        const auto rightPixels = ToRaylibPixels(nes.ppu.GetPatternTableView(1));
+        UpdateTexture(leftTable, leftPixels.data());
+        UpdateTexture(rightTable, rightPixels.data());
+
+        DrawText(TextFormat("Pattern Tables (Palette %d)", selectedPalette), x, y, 20, RAYWHITE);
+        y += 26;
+
+        const float tableSize = static_cast<float>(Ppu2C02::PatternTableSize * kPatternTableScale);
+        DrawTextureEx(leftTable, Vector2{static_cast<float>(x), static_cast<float>(y)}, 0.0f,
+                      static_cast<float>(kPatternTableScale), WHITE);
+        DrawTextureEx(rightTable,
+                      Vector2{static_cast<float>(x) + tableSize + kPatternTableGap, static_cast<float>(y)}, 0.0f,
+                      static_cast<float>(kPatternTableScale), WHITE);
+
+        y += static_cast<int>(tableSize) + 14;
+        DrawPaletteSwatches(nes.ppu, selectedPalette, x, y);
     }
 }
 
@@ -134,8 +197,14 @@ int main(int argc, char** argv)
     Texture2D screenTexture = LoadTextureFromImage(blankFrame);
     UnloadImage(blankFrame);
 
+    Image blankPatternTable = GenImageColor(Ppu2C02::PatternTableSize, Ppu2C02::PatternTableSize, BLACK);
+    Texture2D leftPatternTexture = LoadTextureFromImage(blankPatternTable);
+    Texture2D rightPatternTexture = LoadTextureFromImage(blankPatternTable);
+    UnloadImage(blankPatternTable);
+
     bool emulationRunning = false;
     float residualTime = 0.0f;
+    uint8_t selectedPalette = 0;
 
     while (!WindowShouldClose())
     {
@@ -147,6 +216,9 @@ int main(int argc, char** argv)
             nes.Reset();
             residualTime = 0.0f;
         }
+
+        if (IsKeyPressed(KEY_P))
+            selectedPalette = (selectedPalette + 1) & 0x07;
 
         if (emulationRunning)
         {
@@ -181,9 +253,14 @@ int main(int argc, char** argv)
 
         DrawCpuPanel(nes, kScreenMarginX * 2 + Ppu2C02::ScreenWidth * kPixelScale, kScreenMarginY);
 
+        DrawPatternPanel(nes, leftPatternTexture, rightPatternTexture, selectedPalette, kScreenMarginX,
+                          kScreenMarginY * 2 + Ppu2C02::ScreenHeight * kPixelScale);
+
         EndDrawing();
     }
 
+    UnloadTexture(leftPatternTexture);
+    UnloadTexture(rightPatternTexture);
     UnloadTexture(screenTexture);
     CloseWindow();
 
