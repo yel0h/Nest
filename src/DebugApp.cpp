@@ -121,6 +121,10 @@ namespace
         DrawText("[R] Reset", x, y, 18, GRAY);
         y += 22;
         DrawText("[P] Cycle palette", x, y, 18, GRAY);
+        y += 22;
+        DrawText("[N] Toggle name tables", x, y, 18, GRAY);
+        y += 22;
+        DrawText("[1-4] Select name table", x, y, 18, GRAY);
     }
 
     void DrawPaletteSwatches(Ppu2C02& ppu, uint8_t selectedPalette, int x, int y)
@@ -169,6 +173,43 @@ namespace
         y += static_cast<int>(tableSize) + 14;
         DrawPaletteSwatches(nes.ppu, selectedPalette, x, y);
     }
+
+    const char* MirrorModeName(Cartridge::Mirror mirror)
+    {
+        switch (mirror)
+        {
+            case Cartridge::Mirror::Vertical: return "Vertical";
+            case Cartridge::Mirror::FourScreen: return "Four-Screen";
+            case Cartridge::Mirror::Horizontal:
+            default: return "Horizontal";
+        }
+    }
+
+    void DrawNameTableIdPanel(Bus& nes, uint8_t logicalTable, int x, int y)
+    {
+        constexpr int tilesPerRow = 32;
+        constexpr int tilesPerColumn = 30;
+        constexpr int cellSize = Ppu2C02::ScreenWidth * kPixelScale / tilesPerRow;
+
+        DrawText(TextFormat("Name Table %d of 4 (Mirror: %s) [N] back to screen [1-4] switch table",
+                             logicalTable, MirrorModeName(nes.ppu.GetMirrorMode())),
+                  x, y - 26, 18, RAYWHITE);
+
+        for (int tileRow = 0; tileRow < tilesPerColumn; ++tileRow)
+        {
+            for (int tileColumn = 0; tileColumn < tilesPerRow; ++tileColumn)
+            {
+                const uint8_t id = nes.ppu.GetNameTableEntry(
+                    logicalTable, static_cast<uint8_t>(tileColumn), static_cast<uint8_t>(tileRow));
+
+                const int cellX = x + tileColumn * cellSize;
+                const int cellY = y + tileRow * cellSize;
+
+                DrawRectangleLines(cellX, cellY, cellSize, cellSize, Color{35, 35, 35, 255});
+                DrawText(TextFormat("%02X", id), cellX + 1, cellY + 2, 10, id == 0 ? DARKGRAY : LIME);
+            }
+        }
+    }
 }
 
 int main(int argc, char** argv)
@@ -205,6 +246,8 @@ int main(int argc, char** argv)
     bool emulationRunning = false;
     float residualTime = 0.0f;
     uint8_t selectedPalette = 0;
+    bool showNameTables = false;
+    uint8_t selectedNameTable = 0;
 
     while (!WindowShouldClose())
     {
@@ -219,6 +262,14 @@ int main(int argc, char** argv)
 
         if (IsKeyPressed(KEY_P))
             selectedPalette = (selectedPalette + 1) & 0x07;
+
+        if (IsKeyPressed(KEY_N))
+            showNameTables = !showNameTables;
+
+        if (IsKeyPressed(KEY_ONE)) selectedNameTable = 0;
+        if (IsKeyPressed(KEY_TWO)) selectedNameTable = 1;
+        if (IsKeyPressed(KEY_THREE)) selectedNameTable = 2;
+        if (IsKeyPressed(KEY_FOUR)) selectedNameTable = 3;
 
         if (emulationRunning)
         {
@@ -248,8 +299,16 @@ int main(int argc, char** argv)
         BeginDrawing();
         ClearBackground(BLACK);
 
-        DrawTextureEx(screenTexture, Vector2{static_cast<float>(kScreenMarginX), static_cast<float>(kScreenMarginY)},
-                      0.0f, static_cast<float>(kPixelScale), WHITE);
+        if (showNameTables)
+        {
+            DrawNameTableIdPanel(nes, selectedNameTable, kScreenMarginX, kScreenMarginY + 30);
+        }
+        else
+        {
+            DrawTextureEx(screenTexture,
+                          Vector2{static_cast<float>(kScreenMarginX), static_cast<float>(kScreenMarginY)}, 0.0f,
+                          static_cast<float>(kPixelScale), WHITE);
+        }
 
         DrawCpuPanel(nes, kScreenMarginX * 2 + Ppu2C02::ScreenWidth * kPixelScale, kScreenMarginY);
 

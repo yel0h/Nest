@@ -1,7 +1,5 @@
 #include "Ppu2C02.h"
 
-#include <random>
-
 #include "Cartridge.h"
 
 namespace
@@ -27,9 +25,6 @@ namespace
 
     constexpr int kCyclesPerScanline = 341;
     constexpr int kScanlinesPerFrame = 261;
-
-    constexpr uint8_t kNoiseDarkIndex = 0x0F;
-    constexpr uint8_t kNoiseLightIndex = 0x30;
 }
 
 Ppu2C02::Ppu2C02()
@@ -46,15 +41,6 @@ void Ppu2C02::ConnectCartridge(const std::shared_ptr<Cartridge>& cart)
 
 void Ppu2C02::Clock()
 {
-    static std::mt19937 noiseGenerator{std::random_device{}()};
-    static std::uniform_int_distribution<int> coinFlip(0, 1);
-
-    if (cycle >= 1 && cycle <= ScreenWidth && scanline >= 0 && scanline < ScreenHeight)
-    {
-        const uint8_t colorIndex = coinFlip(noiseGenerator) ? kNoiseLightIndex : kNoiseDarkIndex;
-        PlotPixel(cycle - 1, scanline, palette[colorIndex]);
-    }
-
     if (scanline == -1 && cycle == 1)
     {
         SetStatusFlag(StatusFlag::VerticalBlank, false);
@@ -266,6 +252,21 @@ void Ppu2C02::PpuWrite(uint16_t address, uint8_t data)
     {
         paletteRam[ResolvePaletteRamIndex(address)] = data;
     }
+}
+
+uint8_t Ppu2C02::GetNameTableEntry(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow)
+{
+    logicalTable &= 0x03;
+    tileColumn &= 0x1F;
+    tileRow %= 30;
+
+    const uint16_t address = static_cast<uint16_t>(0x2000 + logicalTable * 0x0400 + tileRow * 32 + tileColumn);
+    return PpuRead(address, true);
+}
+
+Cartridge::Mirror Ppu2C02::GetMirrorMode() const
+{
+    return cartridge ? cartridge->GetMirror() : Cartridge::Mirror::Horizontal;
 }
 
 PixelColor Ppu2C02::GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue)

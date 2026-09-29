@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <memory>
 
-class Cartridge;
+#include "Cartridge.h"
 
 struct PixelColor
 {
@@ -67,10 +67,12 @@ public:
     void PpuWrite(uint16_t address, uint8_t data);
 
     const ScreenBuffer& GetScreen() const { return screen; }
-    const ScreenBuffer& GetNameTableView(uint8_t index) const { return nameTableView[index & 0x01]; }
     const PatternTableBuffer& GetPatternTableView(uint8_t index) const { return patternTableView[index & 0x01]; }
 
     void RenderPatternTable(uint8_t tableIndex, uint8_t paletteId);
+
+    uint8_t GetNameTableEntry(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow);
+    Cartridge::Mirror GetMirrorMode() const;
 
     PixelColor GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue);
 
@@ -110,7 +112,6 @@ private:
     uint16_t vramAddress = 0x0000;
 
     ScreenBuffer screen{};
-    std::array<ScreenBuffer, 2> nameTableView{};
     std::array<PatternTableBuffer, 2> patternTableView{};
 
     int16_t scanline = -1;
