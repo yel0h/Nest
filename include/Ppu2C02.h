@@ -73,6 +73,8 @@ public:
 
     void RenderPatternTable(uint8_t tableIndex, uint8_t paletteId);
 
+    void RenderFrameBruteForce();
+
     uint8_t GetNameTableEntry(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow);
     Cartridge::Mirror GetMirrorMode() const;
 
@@ -96,10 +98,19 @@ public:
 private:
     void PlotPixel(int x, int y, const PixelColor& color);
 
-    void RenderFrame();
     void RenderBackgroundLayer();
     void RenderSpriteLayer();
     uint8_t GetBackgroundPaletteId(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow);
+
+    bool RenderingEnabled() const;
+
+    void IncrementY();
+    void TransferAddressX();
+    void TransferAddressY();
+
+    void RenderScanlineBackground(int16_t y);
+    void EvaluateSpritesForScanline(int16_t y);
+    void RenderScanlineSprites(int16_t y);
 
     std::shared_ptr<Cartridge> cartridge;
 
@@ -120,6 +131,19 @@ private:
     bool addressLatch = false;
     uint8_t dataBuffer = 0x00;
     uint16_t vramAddress = 0x0000;
+    uint16_t vramAddressLatch = 0x0000;
+    uint8_t fineXScroll = 0x00;
+
+    struct SpriteSlot
+    {
+        uint8_t y = 0xFF;
+        uint8_t tileId = 0xFF;
+        uint8_t attribute = 0xFF;
+        uint8_t x = 0xFF;
+    };
+    std::array<SpriteSlot, 8> scanlineSprites{};
+    uint8_t scanlineSpriteCount = 0;
+    bool scanlineHasSpriteZero = false;
 
     ScreenBuffer screen{};
     std::array<bool, ScreenWidth * ScreenHeight> backgroundOpaque{};

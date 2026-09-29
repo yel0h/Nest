@@ -25,6 +25,14 @@ namespace
 
     constexpr int kCyclesPerScanline = 341;
     constexpr int kScanlinesPerFrame = 261;
+
+    uint8_t ReverseBits(uint8_t value)
+    {
+        value = static_cast<uint8_t>(((value & 0xF0) >> 4) | ((value & 0x0F) << 4));
+        value = static_cast<uint8_t>(((value & 0xCC) >> 2) | ((value & 0x33) << 2));
+        value = static_cast<uint8_t>(((value & 0xAA) >> 1) | ((value & 0x55) << 1));
+        return value;
+    }
 }
 
 Ppu2C02::Ppu2C02()
@@ -41,15 +49,30 @@ void Ppu2C02::ConnectCartridge(const std::shared_ptr<Cartridge>& cart)
 
 void Ppu2C02::Clock()
 {
-    if (scanline == -1 && cycle == 1)
+    if (cycle == 1)
     {
-        SetStatusFlag(StatusFlag::VerticalBlank, false);
-    }
-    else if (scanline == ScreenHeight + 1 && cycle == 1)
-    {
-        SetStatusFlag(StatusFlag::VerticalBlank, true);
-        if (GetControlFlag(ControlFlag::EnableNmi))
-            nmiRequested = true;
+        if (scanline == -1)
+        {
+            SetStatusFlag(StatusFlag::VerticalBlank, false);
+            SetStatusFlag(StatusFlag::SpriteZeroHit, false);
+            SetStatusFlag(StatusFlag::SpriteOverflow, false);
+            TransferAddressX();
+            TransferAddressY();
+        }
+        else if (scanline >= 0 && scanline < ScreenHeight)
+        {
+            TransferAddressX();
+            RenderScanlineBackground(static_cast<int16_t>(scanline));
+            EvaluateSpritesForScanline(static_cast<int16_t>(scanline));
+            RenderScanlineSprites(static_cast<int16_t>(scanline));
+            IncrementY();
+        }
+        else if (scanline == ScreenHeight + 1)
+        {
+            SetStatusFlag(StatusFlag::VerticalBlank, true);
+            if (GetControlFlag(ControlFlag::EnableNmi))
+                nmiRequested = true;
+        }
     }
 
     ++cycle;
@@ -60,7 +83,6 @@ void Ppu2C02::Clock()
         if (scanline >= kScanlinesPerFrame)
         {
             scanline = -1;
-            RenderFrame();
             frameComplete = true;
         }
     }
@@ -105,7 +127,7 @@ uint8_t Ppu2C02::CpuRead(uint16_t address, bool readOnly)
                 data = dataBuffer;
                 dataBuffer = PpuRead(vramAddress);
             }
-            vramAddress += GetControlFlag(ControlFlag::IncrementMode) ? 32 : 1;
+            vramAddress = static_cast<uint16_t>((vramAddress + (GetControlFlag(ControlFlag::IncrementMode) ? 32 : 1)) & 0x7FFF);
             break;
         default: break;
     }
@@ -119,6 +141,7 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
     {
         case 0x0000:
             controlRegister = data;
+            vramAddressLatch = static_cast<uint16_t>((vramAddressLatch & 0xF3FF) | ((data & 0x03) << 10));
             break;
         case 0x0001:
             maskRegister = data;
@@ -131,22 +154,36 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
             oam[oamAddress] = data;
             ++oamAddress;
             break;
-        case 0x0005: break;
-        case 0x0006:
+        case 0x0005:
             if (!addressLatch)
             {
-                vramAddress = static_cast<uint16_t>((data << 8) | (vramAddress & 0x00FF));
+                fineXScroll = data & 0x07;
+                vramAddressLatch = static_cast<uint16_t>((vramAddressLatch & 0xFFE0) | (data >> 3));
                 addressLatch = true;
             }
             else
             {
-                vramAddress = static_cast<uint16_t>((vramAddress & 0xFF00) | data);
+                vramAddressLatch = static_cast<uint16_t>((vramAddressLatch & 0x8C1F) |
+                                                           ((data & 0x07) << 12) | ((data & 0xF8) << 2));
+                addressLatch = false;
+            }
+            break;
+        case 0x0006:
+            if (!addressLatch)
+            {
+                vramAddressLatch = static_cast<uint16_t>(((data & 0x3F) << 8) | (vramAddressLatch & 0x00FF));
+                addressLatch = true;
+            }
+            else
+            {
+                vramAddressLatch = static_cast<uint16_t>((vramAddressLatch & 0xFF00) | data);
+                vramAddress = vramAddressLatch;
                 addressLatch = false;
             }
             break;
         case 0x0007:
             PpuWrite(vramAddress, data);
-            vramAddress += GetControlFlag(ControlFlag::IncrementMode) ? 32 : 1;
+            vramAddress = static_cast<uint16_t>((vramAddress + (GetControlFlag(ControlFlag::IncrementMode) ? 32 : 1)) & 0x7FFF);
             break;
         default: break;
     }
@@ -283,10 +320,249 @@ PixelColor Ppu2C02::GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue)
     return palette[PpuRead(entryAddress) & 0x3F];
 }
 
-void Ppu2C02::RenderFrame()
+void Ppu2C02::RenderFrameBruteForce()
 {
     RenderBackgroundLayer();
     RenderSpriteLayer();
+}
+
+bool Ppu2C02::RenderingEnabled() const
+{
+    return GetMaskFlag(MaskFlag::RenderBackground) || GetMaskFlag(MaskFlag::RenderSprites);
+}
+
+void Ppu2C02::IncrementY()
+{
+    if (!RenderingEnabled())
+        return;
+
+    if ((vramAddress & 0x7000) != 0x7000)
+    {
+        vramAddress = static_cast<uint16_t>(vramAddress + 0x1000);
+        return;
+    }
+
+    vramAddress &= 0x8FFF;
+    uint16_t coarseY = (vramAddress & 0x03E0) >> 5;
+    if (coarseY == 29)
+    {
+        coarseY = 0;
+        vramAddress ^= 0x0800;
+    }
+    else if (coarseY == 31)
+    {
+        coarseY = 0;
+    }
+    else
+    {
+        ++coarseY;
+    }
+    vramAddress = static_cast<uint16_t>((vramAddress & ~0x03E0) | (coarseY << 5));
+}
+
+void Ppu2C02::TransferAddressX()
+{
+    if (!RenderingEnabled())
+        return;
+
+    vramAddress = static_cast<uint16_t>((vramAddress & ~0x041F) | (vramAddressLatch & 0x041F));
+}
+
+void Ppu2C02::TransferAddressY()
+{
+    if (!RenderingEnabled())
+        return;
+
+    vramAddress = static_cast<uint16_t>((vramAddress & ~0x7BE0) | (vramAddressLatch & 0x7BE0));
+}
+
+void Ppu2C02::RenderScanlineBackground(int16_t y)
+{
+    const PixelColor backdrop = GetColorFromPalette(0, 0);
+
+    if (!GetMaskFlag(MaskFlag::RenderBackground))
+    {
+        for (int x = 0; x < ScreenWidth; ++x)
+        {
+            backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + x] = false;
+            PlotPixel(x, y, backdrop);
+        }
+        return;
+    }
+
+    const bool showLeft = GetMaskFlag(MaskFlag::ShowBackgroundLeft);
+    const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
+    const uint16_t fineY = (vramAddress >> 12) & 0x0007;
+
+    int lastTileOffset = -1;
+    uint8_t planeLo = 0;
+    uint8_t planeHi = 0;
+    uint8_t paletteId = 0;
+
+    for (int x = 0; x < ScreenWidth; ++x)
+    {
+        const int totalOffset = x + fineXScroll;
+        const int tileOffset = totalOffset >> 3;
+        const uint8_t bitInTile = static_cast<uint8_t>(totalOffset & 0x07);
+
+        if (tileOffset != lastTileOffset)
+        {
+            lastTileOffset = tileOffset;
+
+            uint16_t tileVram = vramAddress;
+            uint16_t coarseX = static_cast<uint16_t>((tileVram & 0x001F) + tileOffset);
+            if (coarseX > 0x001F)
+                tileVram ^= 0x0400;
+            coarseX &= 0x001F;
+            tileVram = static_cast<uint16_t>((tileVram & ~0x001F) | coarseX);
+
+            const uint8_t tileId = PpuRead(static_cast<uint16_t>(0x2000 | (tileVram & 0x0FFF)));
+
+            const uint16_t nametableSelect = tileVram & 0x0C00;
+            const uint16_t coarseYBits = (tileVram >> 5) & 0x001F;
+            const uint16_t attributeAddress = static_cast<uint16_t>(
+                0x23C0 | nametableSelect | ((coarseYBits / 4) << 3) | (coarseX / 4));
+            uint8_t attribute = PpuRead(attributeAddress);
+            if (coarseYBits & 0x02)
+                attribute >>= 4;
+            if (coarseX & 0x02)
+                attribute >>= 2;
+            paletteId = attribute & 0x03;
+
+            const uint16_t tileBase = static_cast<uint16_t>(patternTableBase + tileId * 16 + fineY);
+            planeLo = PpuRead(tileBase);
+            planeHi = PpuRead(static_cast<uint16_t>(tileBase + 8));
+        }
+
+        const bool clipped = x < 8 && !showLeft;
+        const uint8_t bit = static_cast<uint8_t>(7 - bitInTile);
+        const uint8_t pixelValue =
+            clipped ? 0 : static_cast<uint8_t>(((planeHi >> bit) & 0x01) << 1 | ((planeLo >> bit) & 0x01));
+
+        if (pixelValue == 0)
+        {
+            backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + x] = false;
+            PlotPixel(x, y, backdrop);
+        }
+        else
+        {
+            backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + x] = true;
+            PlotPixel(x, y, GetColorFromPalette(paletteId, pixelValue));
+        }
+    }
+}
+
+void Ppu2C02::EvaluateSpritesForScanline(int16_t y)
+{
+    scanlineSpriteCount = 0;
+    scanlineHasSpriteZero = false;
+
+    if (y < 0 || y >= ScreenHeight)
+        return;
+
+    const bool tallSprites = GetControlFlag(ControlFlag::SpriteSize);
+    const int spriteHeight = tallSprites ? 16 : 8;
+
+    int matchCount = 0;
+    for (int i = 0; i < 64; ++i)
+    {
+        const uint8_t spriteY = oam[i * 4 + 0];
+        const int row = y - (spriteY + 1);
+        if (row < 0 || row >= spriteHeight)
+            continue;
+
+        ++matchCount;
+        if (scanlineSpriteCount < scanlineSprites.size())
+        {
+            SpriteSlot& slot = scanlineSprites[scanlineSpriteCount];
+            slot.y = spriteY;
+            slot.tileId = oam[i * 4 + 1];
+            slot.attribute = oam[i * 4 + 2];
+            slot.x = oam[i * 4 + 3];
+            if (i == 0)
+                scanlineHasSpriteZero = true;
+            ++scanlineSpriteCount;
+        }
+    }
+
+    if (matchCount > 8)
+        SetStatusFlag(StatusFlag::SpriteOverflow, true);
+}
+
+void Ppu2C02::RenderScanlineSprites(int16_t y)
+{
+    if (!GetMaskFlag(MaskFlag::RenderSprites))
+        return;
+
+    const bool tallSprites = GetControlFlag(ControlFlag::SpriteSize);
+    const uint16_t spritePatternTableBase = GetControlFlag(ControlFlag::SpritePatternTable) ? 0x1000 : 0x0000;
+    const int spriteHeight = tallSprites ? 16 : 8;
+    const bool showLeft = GetMaskFlag(MaskFlag::ShowSpritesLeft);
+    const bool bgEnabled = GetMaskFlag(MaskFlag::RenderBackground);
+
+    std::array<bool, ScreenWidth> pixelClaimed{};
+
+    for (uint8_t s = 0; s < scanlineSpriteCount; ++s)
+    {
+        const SpriteSlot& sprite = scanlineSprites[s];
+        const bool flipHorizontal = (sprite.attribute & 0x40) != 0;
+        const bool flipVertical = (sprite.attribute & 0x80) != 0;
+        const bool behindBackground = (sprite.attribute & 0x20) != 0;
+        const uint8_t paletteId = static_cast<uint8_t>(4 + (sprite.attribute & 0x03));
+
+        int row = y - (sprite.y + 1);
+        if (flipVertical)
+            row = spriteHeight - 1 - row;
+
+        uint16_t tileBase;
+        if (tallSprites)
+        {
+            const uint16_t table = (sprite.tileId & 0x01) ? 0x1000 : 0x0000;
+            uint8_t tileIndex = sprite.tileId & 0xFE;
+            if (row >= 8)
+            {
+                tileIndex = static_cast<uint8_t>(tileIndex + 1);
+                row -= 8;
+            }
+            tileBase = static_cast<uint16_t>(table + tileIndex * 16);
+        }
+        else
+        {
+            tileBase = static_cast<uint16_t>(spritePatternTableBase + sprite.tileId * 16);
+        }
+
+        const uint8_t planeLo = PpuRead(static_cast<uint16_t>(tileBase + row));
+        const uint8_t planeHi = PpuRead(static_cast<uint16_t>(tileBase + row + 8));
+
+        for (int col = 0; col < 8; ++col)
+        {
+            const int pixelX = sprite.x + col;
+            if (pixelX >= ScreenWidth)
+                continue;
+            if (pixelX < 8 && !showLeft)
+                continue;
+
+            const uint8_t bit = static_cast<uint8_t>(flipHorizontal ? col : (7 - col));
+            const uint8_t pixelValue = static_cast<uint8_t>(((planeHi >> bit) & 0x01) << 1 | ((planeLo >> bit) & 0x01));
+            if (pixelValue == 0)
+                continue;
+
+            const bool bgOpaque = backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + pixelX];
+
+            if (s == 0 && scanlineHasSpriteZero && bgEnabled && bgOpaque && pixelX != 255 &&
+                !GetStatusFlag(StatusFlag::SpriteZeroHit))
+            {
+                SetStatusFlag(StatusFlag::SpriteZeroHit, true);
+            }
+
+            if (pixelClaimed[pixelX])
+                continue;
+            pixelClaimed[pixelX] = true;
+
+            if (!(behindBackground && bgOpaque))
+                PlotPixel(pixelX, y, GetColorFromPalette(paletteId, pixelValue));
+        }
+    }
 }
 
 uint8_t Ppu2C02::GetBackgroundPaletteId(uint8_t logicalTable, uint8_t tileColumn, uint8_t tileRow)

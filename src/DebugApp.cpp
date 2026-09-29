@@ -248,6 +248,7 @@ int main(int argc, char** argv)
     uint8_t selectedPalette = 0;
     bool showNameTables = false;
     uint8_t selectedNameTable = 0;
+    bool bruteForceRender = false;
 
     while (!WindowShouldClose())
     {
@@ -265,6 +266,9 @@ int main(int argc, char** argv)
 
         if (IsKeyPressed(KEY_N))
             showNameTables = !showNameTables;
+
+        if (IsKeyPressed(KEY_B))
+            bruteForceRender = !bruteForceRender;
 
         if (IsKeyPressed(KEY_ONE)) selectedNameTable = 0;
         if (IsKeyPressed(KEY_TWO)) selectedNameTable = 1;
@@ -293,6 +297,9 @@ int main(int argc, char** argv)
                 StepOneFrame(nes);
         }
 
+        if (bruteForceRender)
+            nes.ppu.RenderFrameBruteForce();
+
         const auto pixels = ToRaylibPixels(nes.ppu.GetScreen());
         UpdateTexture(screenTexture, pixels.data());
 
@@ -308,6 +315,9 @@ int main(int argc, char** argv)
             DrawTextureEx(screenTexture,
                           Vector2{static_cast<float>(kScreenMarginX), static_cast<float>(kScreenMarginY)}, 0.0f,
                           static_cast<float>(kPixelScale), WHITE);
+
+            if (bruteForceRender)
+                DrawText("[B] BRUTE-FORCE RENDER", kScreenMarginX, kScreenMarginY - 20, 16, ORANGE);
         }
 
         DrawCpuPanel(nes, kScreenMarginX * 2 + Ppu2C02::ScreenWidth * kPixelScale, kScreenMarginY);
