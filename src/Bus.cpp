@@ -28,6 +28,12 @@ void Bus::Clock()
     if (systemClockCounter % 3 == 0)
         cpu.Clock();
 
+    if (ppu.NmiRequested())
+    {
+        ppu.ClearNmiRequest();
+        cpu.Nmi();
+    }
+
     ++systemClockCounter;
 }
 

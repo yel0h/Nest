@@ -86,6 +86,9 @@ public:
     bool GetStatusFlag(StatusFlag flag) const;
     void SetStatusFlag(StatusFlag flag, bool value);
 
+    bool NmiRequested() const { return nmiRequested; }
+    void ClearNmiRequest() { nmiRequested = false; }
+
 private:
     void PlotPixel(int x, int y, const PixelColor& color);
 
@@ -113,4 +116,5 @@ private:
     int16_t scanline = -1;
     int16_t cycle = 0;
     bool frameComplete = false;
+    bool nmiRequested = false;
 };

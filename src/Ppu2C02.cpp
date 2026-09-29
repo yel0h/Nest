@@ -62,6 +62,8 @@ void Ppu2C02::Clock()
     else if (scanline == ScreenHeight + 1 && cycle == 1)
     {
         SetStatusFlag(StatusFlag::VerticalBlank, true);
+        if (GetControlFlag(ControlFlag::EnableNmi))
+            nmiRequested = true;
     }
 
     ++cycle;
