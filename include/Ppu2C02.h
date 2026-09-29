@@ -20,6 +20,37 @@ public:
     static constexpr int ScreenHeight = 240;
     static constexpr int PatternTableSize = 128;
 
+    enum ControlFlag : uint8_t
+    {
+        NametableX = 1 << 0,
+        NametableY = 1 << 1,
+        IncrementMode = 1 << 2,
+        SpritePatternTable = 1 << 3,
+        BackgroundPatternTable = 1 << 4,
+        SpriteSize = 1 << 5,
+        SlaveMode = 1 << 6,
+        EnableNmi = 1 << 7,
+    };
+
+    enum MaskFlag : uint8_t
+    {
+        Grayscale = 1 << 0,
+        ShowBackgroundLeft = 1 << 1,
+        ShowSpritesLeft = 1 << 2,
+        RenderBackground = 1 << 3,
+        RenderSprites = 1 << 4,
+        EmphasizeRed = 1 << 5,
+        EmphasizeGreen = 1 << 6,
+        EmphasizeBlue = 1 << 7,
+    };
+
+    enum StatusFlag : uint8_t
+    {
+        SpriteOverflow = 1 << 5,
+        SpriteZeroHit = 1 << 6,
+        VerticalBlank = 1 << 7,
+    };
+
     using ScreenBuffer = std::array<PixelColor, ScreenWidth * ScreenHeight>;
     using PatternTableBuffer = std::array<PixelColor, PatternTableSize * PatternTableSize>;
 
@@ -46,6 +77,15 @@ public:
     bool FrameComplete() const { return frameComplete; }
     void ClearFrameComplete() { frameComplete = false; }
 
+    bool GetControlFlag(ControlFlag flag) const;
+    void SetControlFlag(ControlFlag flag, bool value);
+
+    bool GetMaskFlag(MaskFlag flag) const;
+    void SetMaskFlag(MaskFlag flag, bool value);
+
+    bool GetStatusFlag(StatusFlag flag) const;
+    void SetStatusFlag(StatusFlag flag, bool value);
+
 private:
     void PlotPixel(int x, int y, const PixelColor& color);
 
@@ -57,6 +97,10 @@ private:
     std::array<std::array<uint8_t, 4096>, 2> patternMemory{};
 
     std::array<PixelColor, 64> palette{};
+
+    uint8_t controlRegister = 0x00;
+    uint8_t maskRegister = 0x00;
+    uint8_t statusRegister = 0x00;
 
     ScreenBuffer screen{};
     std::array<ScreenBuffer, 2> nameTableView{};

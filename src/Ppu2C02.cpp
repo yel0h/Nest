@@ -55,6 +55,15 @@ void Ppu2C02::Clock()
         PlotPixel(cycle - 1, scanline, palette[colorIndex]);
     }
 
+    if (scanline == -1 && cycle == 1)
+    {
+        SetStatusFlag(StatusFlag::VerticalBlank, false);
+    }
+    else if (scanline == ScreenHeight + 1 && cycle == 1)
+    {
+        SetStatusFlag(StatusFlag::VerticalBlank, true);
+    }
+
     ++cycle;
     if (cycle >= kCyclesPerScanline)
     {
@@ -86,7 +95,10 @@ uint8_t Ppu2C02::CpuRead(uint16_t address, bool readOnly)
     {
         case 0x0000: break;
         case 0x0001: break;
-        case 0x0002: break;
+        case 0x0002:
+            data = statusRegister & 0xE0;
+            SetStatusFlag(StatusFlag::VerticalBlank, false);
+            break;
         case 0x0003: break;
         case 0x0004: break;
         case 0x0005: break;
@@ -100,12 +112,14 @@ uint8_t Ppu2C02::CpuRead(uint16_t address, bool readOnly)
 
 void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
 {
-    (void)data;
-
     switch (address & 0x0007)
     {
-        case 0x0000: break;
-        case 0x0001: break;
+        case 0x0000:
+            controlRegister = data;
+            break;
+        case 0x0001:
+            maskRegister = data;
+            break;
         case 0x0002: break;
         case 0x0003: break;
         case 0x0004: break;
@@ -114,6 +128,45 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
         case 0x0007: break;
         default: break;
     }
+}
+
+bool Ppu2C02::GetControlFlag(ControlFlag flag) const
+{
+    return (controlRegister & flag) != 0;
+}
+
+void Ppu2C02::SetControlFlag(ControlFlag flag, bool value)
+{
+    if (value)
+        controlRegister |= flag;
+    else
+        controlRegister &= static_cast<uint8_t>(~flag);
+}
+
+bool Ppu2C02::GetMaskFlag(MaskFlag flag) const
+{
+    return (maskRegister & flag) != 0;
+}
+
+void Ppu2C02::SetMaskFlag(MaskFlag flag, bool value)
+{
+    if (value)
+        maskRegister |= flag;
+    else
+        maskRegister &= static_cast<uint8_t>(~flag);
+}
+
+bool Ppu2C02::GetStatusFlag(StatusFlag flag) const
+{
+    return (statusRegister & flag) != 0;
+}
+
+void Ppu2C02::SetStatusFlag(StatusFlag flag, bool value)
+{
+    if (value)
+        statusRegister |= flag;
+    else
+        statusRegister &= static_cast<uint8_t>(~flag);
 }
 
 namespace
