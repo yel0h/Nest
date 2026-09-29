@@ -49,30 +49,91 @@ void Ppu2C02::ConnectCartridge(const std::shared_ptr<Cartridge>& cart)
 
 void Ppu2C02::Clock()
 {
-    if (cycle == 1)
+    if (scanline >= -1 && scanline < ScreenHeight)
     {
-        if (scanline == -1)
+        if (scanline == -1 && cycle == 1)
         {
             SetStatusFlag(StatusFlag::VerticalBlank, false);
             SetStatusFlag(StatusFlag::SpriteZeroHit, false);
             SetStatusFlag(StatusFlag::SpriteOverflow, false);
-            TransferAddressX();
-            TransferAddressY();
         }
-        else if (scanline >= 0 && scanline < ScreenHeight)
+
+        const bool fetchingTiles = (cycle >= 2 && cycle <= 257) || (cycle >= 321 && cycle <= 337);
+        if (fetchingTiles)
         {
+            UpdateBackgroundShiftRegisters();
+
+            switch ((cycle - 1) & 0x07)
+            {
+                case 0:
+                    LoadBackgroundShiftRegisters();
+                    bgNextTileId = PpuRead(static_cast<uint16_t>(0x2000 | (vramAddress & 0x0FFF)));
+                    break;
+
+                case 2:
+                {
+                    const uint16_t attributeAddress = static_cast<uint16_t>(
+                        0x23C0 | (vramAddress & 0x0C00) | ((vramAddress >> 4) & 0x0038) | ((vramAddress >> 2) & 0x0007));
+                    bgNextTileAttribute = PpuRead(attributeAddress);
+                    if (vramAddress & 0x0040)
+                        bgNextTileAttribute >>= 4;
+                    if (vramAddress & 0x0002)
+                        bgNextTileAttribute >>= 2;
+                    bgNextTileAttribute &= 0x03;
+                    break;
+                }
+
+                case 4:
+                {
+                    const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
+                    const uint16_t fineY = (vramAddress >> 12) & 0x0007;
+                    bgNextTilePlaneLo = PpuRead(static_cast<uint16_t>(patternTableBase + bgNextTileId * 16 + fineY));
+                    break;
+                }
+
+                case 6:
+                {
+                    const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
+                    const uint16_t fineY = (vramAddress >> 12) & 0x0007;
+                    bgNextTilePlaneHi = PpuRead(static_cast<uint16_t>(patternTableBase + bgNextTileId * 16 + fineY + 8));
+                    break;
+                }
+
+                case 7:
+                    IncrementCoarseX();
+                    break;
+
+                default:
+                    break;
+            }
+        }
+
+        if (cycle == 256)
+            IncrementY();
+
+        if (cycle == 257)
+        {
+            LoadBackgroundShiftRegisters();
             TransferAddressX();
-            RenderScanlineBackground(static_cast<int16_t>(scanline));
+        }
+
+        if (scanline == -1 && cycle == 280)
+            TransferAddressY();
+
+        if (scanline >= 0 && cycle >= 1 && cycle <= ScreenWidth)
+            RenderBackgroundPixel(cycle - 1, static_cast<int16_t>(scanline));
+
+        if (scanline >= 0 && cycle == 257)
+        {
             EvaluateSpritesForScanline(static_cast<int16_t>(scanline));
             RenderScanlineSprites(static_cast<int16_t>(scanline));
-            IncrementY();
         }
-        else if (scanline == ScreenHeight + 1)
-        {
-            SetStatusFlag(StatusFlag::VerticalBlank, true);
-            if (GetControlFlag(ControlFlag::EnableNmi))
-                nmiRequested = true;
-        }
+    }
+    else if (scanline == ScreenHeight + 1 && cycle == 1)
+    {
+        SetStatusFlag(StatusFlag::VerticalBlank, true);
+        if (GetControlFlag(ControlFlag::EnableNmi))
+            nmiRequested = true;
     }
 
     ++cycle;
@@ -360,6 +421,22 @@ void Ppu2C02::IncrementY()
     vramAddress = static_cast<uint16_t>((vramAddress & ~0x03E0) | (coarseY << 5));
 }
 
+void Ppu2C02::IncrementCoarseX()
+{
+    if (!RenderingEnabled())
+        return;
+
+    if ((vramAddress & 0x001F) == 31)
+    {
+        vramAddress &= static_cast<uint16_t>(~0x001F);
+        vramAddress ^= 0x0400;
+    }
+    else
+    {
+        ++vramAddress;
+    }
+}
+
 void Ppu2C02::TransferAddressX()
 {
     if (!RenderingEnabled())
@@ -376,80 +453,48 @@ void Ppu2C02::TransferAddressY()
     vramAddress = static_cast<uint16_t>((vramAddress & ~0x7BE0) | (vramAddressLatch & 0x7BE0));
 }
 
-void Ppu2C02::RenderScanlineBackground(int16_t y)
+void Ppu2C02::LoadBackgroundShiftRegisters()
 {
-    const PixelColor backdrop = GetColorFromPalette(0, 0);
+    bgPatternShiftLo = static_cast<uint16_t>((bgPatternShiftLo & 0xFF00) | bgNextTilePlaneLo);
+    bgPatternShiftHi = static_cast<uint16_t>((bgPatternShiftHi & 0xFF00) | bgNextTilePlaneHi);
 
+    bgAttributeShiftLo = static_cast<uint16_t>((bgAttributeShiftLo & 0xFF00) | ((bgNextTileAttribute & 0x01) ? 0xFF : 0x00));
+    bgAttributeShiftHi = static_cast<uint16_t>((bgAttributeShiftHi & 0xFF00) | ((bgNextTileAttribute & 0x02) ? 0xFF : 0x00));
+}
+
+void Ppu2C02::UpdateBackgroundShiftRegisters()
+{
     if (!GetMaskFlag(MaskFlag::RenderBackground))
-    {
-        for (int x = 0; x < ScreenWidth; ++x)
-        {
-            backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + x] = false;
-            PlotPixel(x, y, backdrop);
-        }
         return;
-    }
 
-    const bool showLeft = GetMaskFlag(MaskFlag::ShowBackgroundLeft);
-    const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
-    const uint16_t fineY = (vramAddress >> 12) & 0x0007;
+    bgPatternShiftLo <<= 1;
+    bgPatternShiftHi <<= 1;
+    bgAttributeShiftLo <<= 1;
+    bgAttributeShiftHi <<= 1;
+}
 
-    int lastTileOffset = -1;
-    uint8_t planeLo = 0;
-    uint8_t planeHi = 0;
+void Ppu2C02::RenderBackgroundPixel(int x, int16_t y)
+{
+    uint8_t pixelValue = 0;
     uint8_t paletteId = 0;
 
-    for (int x = 0; x < ScreenWidth; ++x)
+    const bool showLeft = GetMaskFlag(MaskFlag::ShowBackgroundLeft);
+    if (GetMaskFlag(MaskFlag::RenderBackground) && (x >= 8 || showLeft))
     {
-        const int totalOffset = x + fineXScroll;
-        const int tileOffset = totalOffset >> 3;
-        const uint8_t bitInTile = static_cast<uint8_t>(totalOffset & 0x07);
+        const uint16_t selector = static_cast<uint16_t>(0x8000 >> fineXScroll);
 
-        if (tileOffset != lastTileOffset)
-        {
-            lastTileOffset = tileOffset;
+        const uint8_t patternLoBit = (bgPatternShiftLo & selector) ? 1 : 0;
+        const uint8_t patternHiBit = (bgPatternShiftHi & selector) ? 1 : 0;
+        pixelValue = static_cast<uint8_t>((patternHiBit << 1) | patternLoBit);
 
-            uint16_t tileVram = vramAddress;
-            uint16_t coarseX = static_cast<uint16_t>((tileVram & 0x001F) + tileOffset);
-            if (coarseX > 0x001F)
-                tileVram ^= 0x0400;
-            coarseX &= 0x001F;
-            tileVram = static_cast<uint16_t>((tileVram & ~0x001F) | coarseX);
-
-            const uint8_t tileId = PpuRead(static_cast<uint16_t>(0x2000 | (tileVram & 0x0FFF)));
-
-            const uint16_t nametableSelect = tileVram & 0x0C00;
-            const uint16_t coarseYBits = (tileVram >> 5) & 0x001F;
-            const uint16_t attributeAddress = static_cast<uint16_t>(
-                0x23C0 | nametableSelect | ((coarseYBits / 4) << 3) | (coarseX / 4));
-            uint8_t attribute = PpuRead(attributeAddress);
-            if (coarseYBits & 0x02)
-                attribute >>= 4;
-            if (coarseX & 0x02)
-                attribute >>= 2;
-            paletteId = attribute & 0x03;
-
-            const uint16_t tileBase = static_cast<uint16_t>(patternTableBase + tileId * 16 + fineY);
-            planeLo = PpuRead(tileBase);
-            planeHi = PpuRead(static_cast<uint16_t>(tileBase + 8));
-        }
-
-        const bool clipped = x < 8 && !showLeft;
-        const uint8_t bit = static_cast<uint8_t>(7 - bitInTile);
-        const uint8_t pixelValue =
-            clipped ? 0 : static_cast<uint8_t>(((planeHi >> bit) & 0x01) << 1 | ((planeLo >> bit) & 0x01));
-
-        if (pixelValue == 0)
-        {
-            backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + x] = false;
-            PlotPixel(x, y, backdrop);
-        }
-        else
-        {
-            backgroundOpaque[static_cast<size_t>(y) * ScreenWidth + x] = true;
-            PlotPixel(x, y, GetColorFromPalette(paletteId, pixelValue));
-        }
+        const uint8_t attributeLoBit = (bgAttributeShiftLo & selector) ? 1 : 0;
+        const uint8_t attributeHiBit = (bgAttributeShiftHi & selector) ? 1 : 0;
+        paletteId = static_cast<uint8_t>((attributeHiBit << 1) | attributeLoBit);
     }
+
+    const size_t index = static_cast<size_t>(y) * ScreenWidth + static_cast<size_t>(x);
+    backgroundOpaque[index] = pixelValue != 0;
+    PlotPixel(x, y, GetColorFromPalette(paletteId, pixelValue));
 }
 
 void Ppu2C02::EvaluateSpritesForScanline(int16_t y)

@@ -105,10 +105,14 @@ private:
     bool RenderingEnabled() const;
 
     void IncrementY();
+    void IncrementCoarseX();
     void TransferAddressX();
     void TransferAddressY();
 
-    void RenderScanlineBackground(int16_t y);
+    void LoadBackgroundShiftRegisters();
+    void UpdateBackgroundShiftRegisters();
+    void RenderBackgroundPixel(int x, int16_t y);
+
     void EvaluateSpritesForScanline(int16_t y);
     void RenderScanlineSprites(int16_t y);
 
@@ -133,6 +137,16 @@ private:
     uint16_t vramAddress = 0x0000;
     uint16_t vramAddressLatch = 0x0000;
     uint8_t fineXScroll = 0x00;
+
+    uint8_t bgNextTileId = 0x00;
+    uint8_t bgNextTileAttribute = 0x00;
+    uint8_t bgNextTilePlaneLo = 0x00;
+    uint8_t bgNextTilePlaneHi = 0x00;
+
+    uint16_t bgPatternShiftLo = 0x0000;
+    uint16_t bgPatternShiftHi = 0x0000;
+    uint16_t bgAttributeShiftLo = 0x0000;
+    uint16_t bgAttributeShiftHi = 0x0000;
 
     struct SpriteSlot
     {
