@@ -57,6 +57,11 @@ Cartridge::Cartridge(const std::string& filename)
 
     mapperId = static_cast<uint8_t>((header.flags7 & 0xF0) | (header.flags6 >> 4));
 
+    if (header.flags6 & 0x08)
+        mirror = Mirror::FourScreen;
+    else
+        mirror = (header.flags6 & 0x01) ? Mirror::Vertical : Mirror::Horizontal;
+
     AllocateMemory(header.prgBankCount, header.chrBankCount);
 
     file.read(reinterpret_cast<char*>(prgMemory.data()), static_cast<std::streamsize>(prgMemory.size()));

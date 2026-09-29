@@ -7,6 +7,13 @@
 class Cartridge
 {
 public:
+    enum class Mirror
+    {
+        Horizontal,
+        Vertical,
+        FourScreen,
+    };
+
     Cartridge();
     explicit Cartridge(const std::string& filename);
     ~Cartridge();
@@ -18,6 +25,7 @@ public:
     bool PpuWrite(uint16_t address, uint8_t data);
 
     bool ImageValid() const { return imageValid; }
+    Mirror GetMirror() const { return mirror; }
 
 private:
     void AllocateMemory(uint8_t prgBankCount, uint8_t chrBankCount);
@@ -29,5 +37,6 @@ private:
     uint8_t chrBanks = 0;
     uint8_t mapperId = 0;
 
+    Mirror mirror = Mirror::Horizontal;
     bool imageValid = false;
 };
