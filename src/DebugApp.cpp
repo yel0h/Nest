@@ -31,8 +31,17 @@ namespace
     {
         do
         {
-            nes.cpu.Clock();
+            nes.Clock();
         } while (!nes.cpu.InstructionComplete());
+    }
+
+    void StepOneFrame(Bus& nes)
+    {
+        do
+        {
+            nes.Clock();
+        } while (!nes.ppu.FrameComplete());
+        nes.ppu.ClearFrameComplete();
     }
 
     void DrawFlag(int x, int y, const char* label, bool set)
@@ -91,6 +100,10 @@ namespace
         y += 20;
         DrawText("[C] Step instruction", x, y, 18, GRAY);
         y += 22;
+        DrawText("[F] Step frame", x, y, 18, GRAY);
+        y += 22;
+        DrawText("[SPACE] Run / pause", x, y, 18, GRAY);
+        y += 22;
         DrawText("[R] Reset", x, y, 18, GRAY);
     }
 }
@@ -121,17 +134,41 @@ int main(int argc, char** argv)
     Texture2D screenTexture = LoadTextureFromImage(blankFrame);
     UnloadImage(blankFrame);
 
+    bool emulationRunning = false;
+    float residualTime = 0.0f;
+
     while (!WindowShouldClose())
     {
-        if (IsKeyPressed(KEY_C))
-            StepOneInstruction(nes);
+        if (IsKeyPressed(KEY_SPACE))
+            emulationRunning = !emulationRunning;
 
         if (IsKeyPressed(KEY_R))
+        {
             nes.Reset();
+            residualTime = 0.0f;
+        }
 
-        while (!nes.ppu.FrameComplete())
-            nes.ppu.Clock();
-        nes.ppu.ClearFrameComplete();
+        if (emulationRunning)
+        {
+            constexpr float kFrameSeconds = 1.0f / 60.0f;
+            if (residualTime > 0.0f)
+            {
+                residualTime -= GetFrameTime();
+            }
+            else
+            {
+                residualTime += kFrameSeconds - GetFrameTime();
+                StepOneFrame(nes);
+            }
+        }
+        else
+        {
+            if (IsKeyPressed(KEY_C))
+                StepOneInstruction(nes);
+
+            if (IsKeyPressed(KEY_F))
+                StepOneFrame(nes);
+        }
 
         const auto pixels = ToRaylibPixels(nes.ppu.GetScreen());
         UpdateTexture(screenTexture, pixels.data());
