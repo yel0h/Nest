@@ -61,11 +61,17 @@ uint8_t Ppu2C02::PpuRead(uint16_t address, bool readOnly)
     address &= 0x3FFF;
 
     uint8_t data = 0x00;
+
+    if (cartridge && cartridge->PpuRead(address, data))
+        return data;
+
     return data;
 }
 
 void Ppu2C02::PpuWrite(uint16_t address, uint8_t data)
 {
     address &= 0x3FFF;
-    (void)data;
+
+    if (cartridge && cartridge->PpuWrite(address, data))
+        return;
 }
