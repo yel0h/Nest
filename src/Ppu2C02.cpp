@@ -96,14 +96,25 @@ uint8_t Ppu2C02::CpuRead(uint16_t address, bool readOnly)
         case 0x0000: break;
         case 0x0001: break;
         case 0x0002:
-            data = statusRegister & 0xE0;
+            data = (statusRegister & 0xE0) | (dataBuffer & 0x1F);
             SetStatusFlag(StatusFlag::VerticalBlank, false);
+            addressLatch = false;
             break;
         case 0x0003: break;
         case 0x0004: break;
         case 0x0005: break;
         case 0x0006: break;
-        case 0x0007: break;
+        case 0x0007:
+            if (vramAddress >= 0x3F00)
+            {
+                data = PpuRead(vramAddress);
+            }
+            else
+            {
+                data = dataBuffer;
+                dataBuffer = PpuRead(vramAddress);
+            }
+            break;
         default: break;
     }
 
@@ -124,8 +135,21 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
         case 0x0003: break;
         case 0x0004: break;
         case 0x0005: break;
-        case 0x0006: break;
-        case 0x0007: break;
+        case 0x0006:
+            if (!addressLatch)
+            {
+                vramAddress = static_cast<uint16_t>((data << 8) | (vramAddress & 0x00FF));
+                addressLatch = true;
+            }
+            else
+            {
+                vramAddress = static_cast<uint16_t>((vramAddress & 0xFF00) | data);
+                addressLatch = false;
+            }
+            break;
+        case 0x0007:
+            PpuWrite(vramAddress, data);
+            break;
         default: break;
     }
 }

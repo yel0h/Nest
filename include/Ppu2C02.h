@@ -102,6 +102,10 @@ private:
     uint8_t maskRegister = 0x00;
     uint8_t statusRegister = 0x00;
 
+    bool addressLatch = false;
+    uint8_t dataBuffer = 0x00;
+    uint16_t vramAddress = 0x0000;
+
     ScreenBuffer screen{};
     std::array<ScreenBuffer, 2> nameTableView{};
     std::array<PatternTableBuffer, 2> patternTableView{};
