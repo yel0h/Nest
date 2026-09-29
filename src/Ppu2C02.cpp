@@ -114,6 +114,7 @@ uint8_t Ppu2C02::CpuRead(uint16_t address, bool readOnly)
                 data = dataBuffer;
                 dataBuffer = PpuRead(vramAddress);
             }
+            vramAddress += GetControlFlag(ControlFlag::IncrementMode) ? 32 : 1;
             break;
         default: break;
     }
@@ -149,6 +150,7 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
             break;
         case 0x0007:
             PpuWrite(vramAddress, data);
+            vramAddress += GetControlFlag(ControlFlag::IncrementMode) ? 32 : 1;
             break;
         default: break;
     }
