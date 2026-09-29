@@ -2,6 +2,8 @@
 
 #include <fstream>
 
+#include "Mapper000.h"
+
 namespace
 {
     constexpr size_t kPrgBankSize = 16 * 1024;
@@ -38,6 +40,7 @@ namespace
 Cartridge::Cartridge()
 {
     AllocateMemory(2, 1);
+    CreateMapper();
     imageValid = true;
 }
 
@@ -63,6 +66,7 @@ Cartridge::Cartridge(const std::string& filename)
         mirror = (header.flags6 & 0x01) ? Mirror::Vertical : Mirror::Horizontal;
 
     AllocateMemory(header.prgBankCount, header.chrBankCount);
+    CreateMapper();
 
     file.read(reinterpret_cast<char*>(prgMemory.data()), static_cast<std::streamsize>(prgMemory.size()));
     if (!file)
@@ -91,40 +95,67 @@ void Cartridge::AllocateMemory(uint8_t prgBankCount, uint8_t chrBankCount)
     chrMemory.assign(chrSize, 0);
 }
 
+void Cartridge::CreateMapper()
+{
+    switch (mapperId)
+    {
+    case 0:
+        mapper = std::make_shared<Mapper000>(prgBanks, chrBanks);
+        break;
+    default:
+        mapper = nullptr;
+        break;
+    }
+}
+
 bool Cartridge::CpuRead(uint16_t address, uint8_t& data) const
 {
-    if (address < 0x8000 || prgMemory.empty())
+    if (!mapper)
         return false;
 
-    const uint16_t mask = prgBanks > 1 ? 0x7FFF : 0x3FFF;
-    data = prgMemory[address & mask];
+    uint32_t mappedAddress = 0;
+    if (!mapper->CpuMapRead(address, mappedAddress))
+        return false;
+
+    data = prgMemory[mappedAddress];
     return true;
 }
 
 bool Cartridge::CpuWrite(uint16_t address, uint8_t data)
 {
-    if (address < 0x8000 || prgMemory.empty())
+    if (!mapper)
         return false;
 
-    const uint16_t mask = prgBanks > 1 ? 0x7FFF : 0x3FFF;
-    prgMemory[address & mask] = data;
+    uint32_t mappedAddress = 0;
+    if (!mapper->CpuMapWrite(address, mappedAddress))
+        return false;
+
+    prgMemory[mappedAddress] = data;
     return true;
 }
 
 bool Cartridge::PpuRead(uint16_t address, uint8_t& data) const
 {
-    if (address > 0x1FFF || chrMemory.empty())
+    if (!mapper)
         return false;
 
-    data = chrMemory[address];
+    uint32_t mappedAddress = 0;
+    if (!mapper->PpuMapRead(address, mappedAddress))
+        return false;
+
+    data = chrMemory[mappedAddress];
     return true;
 }
 
 bool Cartridge::PpuWrite(uint16_t address, uint8_t data)
 {
-    if (address > 0x1FFF || chrMemory.empty())
+    if (!mapper)
         return false;
 
-    chrMemory[address] = data;
+    uint32_t mappedAddress = 0;
+    if (!mapper->PpuMapWrite(address, mappedAddress))
+        return false;
+
+    chrMemory[mappedAddress] = data;
     return true;
 }

@@ -11,6 +11,8 @@ add_executable(nes6502
     src/Opcodes.cpp
     src/Ppu2C02.cpp
     src/Cartridge.cpp
+    src/Mapper.cpp
+    src/Mapper000.cpp
     src/main.cpp
 )
 

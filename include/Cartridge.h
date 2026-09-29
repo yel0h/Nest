@@ -1,8 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
+
+class Mapper;
 
 class Cartridge
 {
@@ -29,9 +32,12 @@ public:
 
 private:
     void AllocateMemory(uint8_t prgBankCount, uint8_t chrBankCount);
+    void CreateMapper();
 
     std::vector<uint8_t> prgMemory;
     std::vector<uint8_t> chrMemory;
+
+    std::shared_ptr<Mapper> mapper;
 
     uint8_t prgBanks = 0;
     uint8_t chrBanks = 0;
