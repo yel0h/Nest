@@ -2,8 +2,12 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 #include "Cpu6502.h"
+#include "Ppu2C02.h"
+
+class Cartridge;
 
 class Bus
 {
@@ -12,8 +16,17 @@ public:
     ~Bus();
 
     Cpu6502 cpu;
-    std::array<uint8_t, 64 * 1024> ram{};
+    Ppu2C02 ppu;
+    std::array<uint8_t, 2 * 1024> cpuRam{};
 
-    void Write(uint16_t address, uint8_t data);
-    uint8_t Read(uint16_t address, bool readOnly = false) const;
+    void InsertCartridge(const std::shared_ptr<Cartridge>& cart);
+    void Reset();
+    void Clock();
+
+    void CpuWrite(uint16_t address, uint8_t data);
+    uint8_t CpuRead(uint16_t address, bool readOnly = false);
+
+private:
+    std::shared_ptr<Cartridge> cartridge;
+    uint32_t systemClockCounter = 0;
 };

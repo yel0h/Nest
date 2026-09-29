@@ -1,53 +1,69 @@
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include "Bus.h"
+#include "Cartridge.h"
 
-int main()
+namespace
 {
-    Bus nes;
+    void LoadProgram(Bus& nes, uint16_t address, const std::vector<uint8_t>& program)
+    {
+        for (size_t i = 0; i < program.size(); ++i)
+            nes.CpuWrite(address + static_cast<uint16_t>(i), program[i]);
+    }
 
-    const uint16_t loadAddress = 0x8000;
-    const std::vector<uint8_t> program = {
-        0xA9, 0x0A,
-        0x8D, 0x00, 0x40,
-        0xA9, 0x05,
-        0x6D, 0x00, 0x40,
-        0x8D, 0x01, 0x40,
-        0x4C, 0x0D, 0x80,
-    };
+    void SetVector(Bus& nes, uint16_t vectorAddress, uint16_t target)
+    {
+        nes.CpuWrite(vectorAddress, target & 0x00FF);
+        nes.CpuWrite(vectorAddress + 1, (target >> 8) & 0x00FF);
+    }
 
-    for (size_t i = 0; i < program.size(); ++i)
-        nes.Write(loadAddress + static_cast<uint16_t>(i), program[i]);
-
-    nes.Write(0xFFFC, loadAddress & 0x00FF);
-    nes.Write(0xFFFD, (loadAddress >> 8) & 0x00FF);
-
-    nes.cpu.Reset();
-
-    auto runOneInstruction = [&nes]()
+    void RunOneInstruction(Bus& nes)
     {
         do
         {
             nes.cpu.Clock();
         } while (!nes.cpu.InstructionComplete());
+    }
+}
+
+int main()
+{
+    const uint16_t loadAddress = 0x8000;
+
+    Bus nes;
+    nes.InsertCartridge(std::make_shared<Cartridge>());
+
+    const std::vector<uint8_t> program = {
+        0xA9, 0x0A,
+        0x8D, 0x00, 0x03,
+        0xA9, 0x05,
+        0x6D, 0x00, 0x03,
+        0x8D, 0x01, 0x03,
+        0x4C, 0x0D, 0x80,
     };
+    LoadProgram(nes, loadAddress, program);
+    SetVector(nes, 0xFFFC, loadAddress);
 
-    runOneInstruction();
+    nes.cpu.Reset();
 
+    RunOneInstruction(nes);
     const int instructionsToRun = 5;
     for (int i = 0; i < instructionsToRun; ++i)
-        runOneInstruction();
+        RunOneInstruction(nes);
 
     std::cout << "A = " << static_cast<int>(nes.cpu.a) << " (expected 15)\n";
-    std::cout << "mem[0x4000] = " << static_cast<int>(nes.Read(0x4000)) << " (expected 10)\n";
-    std::cout << "mem[0x4001] = " << static_cast<int>(nes.Read(0x4001)) << " (expected 15)\n";
+    std::cout << "mem[0x0300] = " << static_cast<int>(nes.CpuRead(0x0300)) << " (expected 10)\n";
+    std::cout << "mem[0x0301] = " << static_cast<int>(nes.CpuRead(0x0301)) << " (expected 15)\n";
     std::cout << "Carry flag = " << nes.cpu.GetFlag(Cpu6502::Carry) << " (expected 0)\n";
     std::cout << "Zero flag = " << nes.cpu.GetFlag(Cpu6502::Zero) << " (expected 0)\n";
     std::cout << "Negative flag= " << nes.cpu.GetFlag(Cpu6502::Negative) << " (expected 0)\n";
 
     Bus stackTest;
+    stackTest.InsertCartridge(std::make_shared<Cartridge>());
+
     const std::vector<uint8_t> stackProgram = {
         0xA9, 0x50,
         0x38,
@@ -56,62 +72,51 @@ int main()
         0xA9, 0x00,
         0x68,
     };
-    for (size_t i = 0; i < stackProgram.size(); ++i)
-        stackTest.Write(loadAddress + static_cast<uint16_t>(i), stackProgram[i]);
-    stackTest.Write(0xFFFC, loadAddress & 0x00FF);
-    stackTest.Write(0xFFFD, (loadAddress >> 8) & 0x00FF);
+    LoadProgram(stackTest, loadAddress, stackProgram);
+    SetVector(stackTest, 0xFFFC, loadAddress);
 
     stackTest.cpu.Reset();
-    auto runOne = [](Bus& b)
-    {
-        do
-        {
-            b.cpu.Clock();
-        } while (!b.cpu.InstructionComplete());
-    };
-    runOne(stackTest);
+    RunOneInstruction(stackTest);
     for (int i = 0; i < 6; ++i)
-        runOne(stackTest);
+        RunOneInstruction(stackTest);
 
     std::cout << "\nSBC/stack: A = " << static_cast<int>(stackTest.cpu.a) << " (expected 64)\n";
     std::cout << "SBC/stack: Carry flag = " << stackTest.cpu.GetFlag(Cpu6502::Carry) << " (expected 1)\n";
     std::cout << "SBC/stack: stack byte pushed by PHA = "
-              << static_cast<int>(stackTest.Read(0x01FD)) << " (expected 64)\n";
+              << static_cast<int>(stackTest.CpuRead(0x01FD)) << " (expected 64)\n";
 
     Bus interruptTest;
+    interruptTest.InsertCartridge(std::make_shared<Cartridge>());
+
     const uint16_t handlerAddress = 0x9000;
     const std::vector<uint8_t> mainProgram = {
         0xA9, 0x07,
-        0x8D, 0x00, 0x40,
+        0x8D, 0x00, 0x03,
     };
     const std::vector<uint8_t> handlerProgram = {
-        0xEE, 0x20, 0x40,
+        0xEE, 0x10, 0x03,
         0x40,
     };
-    for (size_t i = 0; i < mainProgram.size(); ++i)
-        interruptTest.Write(loadAddress + static_cast<uint16_t>(i), mainProgram[i]);
-    for (size_t i = 0; i < handlerProgram.size(); ++i)
-        interruptTest.Write(handlerAddress + static_cast<uint16_t>(i), handlerProgram[i]);
-    interruptTest.Write(0xFFFC, loadAddress & 0x00FF);
-    interruptTest.Write(0xFFFD, (loadAddress >> 8) & 0x00FF);
-    interruptTest.Write(0xFFFA, handlerAddress & 0x00FF);
-    interruptTest.Write(0xFFFB, (handlerAddress >> 8) & 0x00FF);
+    LoadProgram(interruptTest, loadAddress, mainProgram);
+    LoadProgram(interruptTest, handlerAddress, handlerProgram);
+    SetVector(interruptTest, 0xFFFC, loadAddress);
+    SetVector(interruptTest, 0xFFFA, handlerAddress);
 
     interruptTest.cpu.Reset();
-    runOne(interruptTest);
-    runOne(interruptTest);
+    RunOneInstruction(interruptTest);
+    RunOneInstruction(interruptTest);
 
     const bool interruptOffBeforeNmi = interruptTest.cpu.GetFlag(Cpu6502::InterruptOff);
     const uint8_t spBeforeNmi = interruptTest.cpu.sp;
 
     interruptTest.cpu.Nmi();
-    runOne(interruptTest);
-    runOne(interruptTest);
-    runOne(interruptTest);
-    runOne(interruptTest);
+    RunOneInstruction(interruptTest);
+    RunOneInstruction(interruptTest);
+    RunOneInstruction(interruptTest);
+    RunOneInstruction(interruptTest);
 
-    std::cout << "\nNMI/RTI: mem[0x4020] = " << static_cast<int>(interruptTest.Read(0x4020)) << " (expected 1)\n";
-    std::cout << "NMI/RTI: mem[0x4000] = " << static_cast<int>(interruptTest.Read(0x4000)) << " (expected 7)\n";
+    std::cout << "\nNMI/RTI: mem[0x0310] = " << static_cast<int>(interruptTest.CpuRead(0x0310)) << " (expected 1)\n";
+    std::cout << "NMI/RTI: mem[0x0300] = " << static_cast<int>(interruptTest.CpuRead(0x0300)) << " (expected 7)\n";
     std::cout << "NMI/RTI: stack pointer restored = " << (interruptTest.cpu.sp == spBeforeNmi) << " (expected 1)\n";
     std::cout << "NMI/RTI: InterruptOff restored = "
               << (interruptTest.cpu.GetFlag(Cpu6502::InterruptOff) == interruptOffBeforeNmi) << " (expected 1)\n";

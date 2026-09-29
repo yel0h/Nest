@@ -1,27 +1,66 @@
 #include "Bus.h"
 
+#include "Cartridge.h"
+
 Bus::Bus()
 {
     cpu.ConnectBus(this);
-
-    for (auto& cell : ram)
-        cell = 0x00;
 }
 
 Bus::~Bus() = default;
 
-void Bus::Write(uint16_t address, uint8_t data)
+void Bus::InsertCartridge(const std::shared_ptr<Cartridge>& cart)
 {
-    if (address >= 0x0000 && address <= 0xFFFF)
-        ram[address] = data;
+    cartridge = cart;
+    ppu.ConnectCartridge(cart);
 }
 
-uint8_t Bus::Read(uint16_t address, bool readOnly) const
+void Bus::Reset()
 {
-    (void)readOnly;
+    cpu.Reset();
+    systemClockCounter = 0;
+}
 
-    if (address >= 0x0000 && address <= 0xFFFF)
-        return ram[address];
+void Bus::Clock()
+{
+    ppu.Clock();
 
-    return 0x00;
+    if (systemClockCounter % 3 == 0)
+        cpu.Clock();
+
+    ++systemClockCounter;
+}
+
+void Bus::CpuWrite(uint16_t address, uint8_t data)
+{
+    if (cartridge && cartridge->CpuWrite(address, data))
+        return;
+
+    if (address <= 0x1FFF)
+    {
+        cpuRam[address & 0x07FF] = data;
+    }
+    else if (address >= 0x2000 && address <= 0x3FFF)
+    {
+        ppu.CpuWrite(address & 0x0007, data);
+    }
+}
+
+uint8_t Bus::CpuRead(uint16_t address, bool readOnly)
+{
+    uint8_t data = 0x00;
+
+    if (cartridge && cartridge->CpuRead(address, data))
+        return data;
+
+    if (address <= 0x1FFF)
+    {
+        data = cpuRam[address & 0x07FF];
+    }
+    else if (address >= 0x2000 && address <= 0x3FFF)
+    {
+        data = ppu.CpuRead(address & 0x0007, readOnly);
+    }
+
+    return data;
 }

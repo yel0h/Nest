@@ -9,6 +9,8 @@ add_executable(nes6502
     src/Cpu6502.cpp
     src/AddressingModes.cpp
     src/Opcodes.cpp
+    src/Ppu2C02.cpp
+    src/Cartridge.cpp
     src/main.cpp
 )
 

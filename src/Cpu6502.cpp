@@ -51,12 +51,12 @@ void Cpu6502::SetFlag(StatusFlag flag, bool value)
 
 uint8_t Cpu6502::Read(uint16_t address) const
 {
-    return bus->Read(address);
+    return bus->CpuRead(address);
 }
 
 void Cpu6502::Write(uint16_t address, uint8_t data)
 {
-    bus->Write(address, data);
+    bus->CpuWrite(address, data);
 }
 
 uint8_t Cpu6502::Fetch()
