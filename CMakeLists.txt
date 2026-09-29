@@ -4,7 +4,7 @@ project(nes6502 CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(nes6502
+add_library(nes_core STATIC
     src/Bus.cpp
     src/Cpu6502.cpp
     src/AddressingModes.cpp
@@ -13,7 +13,28 @@ add_executable(nes6502
     src/Cartridge.cpp
     src/Mapper.cpp
     src/Mapper000.cpp
-    src/main.cpp
 )
+target_include_directories(nes_core PUBLIC include)
 
-target_include_directories(nes6502 PRIVATE include)
+add_executable(nes6502 src/main.cpp)
+target_link_libraries(nes6502 PRIVATE nes_core)
+
+option(NES_BUILD_DEBUGGER "Build the raylib-based visual debugger" ON)
+if(NES_BUILD_DEBUGGER)
+    include(FetchContent)
+
+    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+        raylib
+        GIT_REPOSITORY https://github.com/raysan5/raylib.git
+        GIT_TAG 5.5
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(raylib)
+
+    add_executable(nes_debugger src/DebugApp.cpp)
+    target_link_libraries(nes_debugger PRIVATE nes_core raylib)
+endif()
