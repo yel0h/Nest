@@ -607,7 +607,7 @@ void Ppu2C02::RenderScanlineSprites(int16_t y)
     for (uint8_t s = 0; s < scanlineSpriteCount; ++s)
     {
         const SpriteSlot& sprite = scanlineSprites[s];
-        const bool behindBackground = (sprite.attribute & 0x20) != 0;
+        const bool behindBackground = ((sprite.attribute & 0x20) != 0) != invertSpritePriority;
         const uint8_t paletteId = static_cast<uint8_t>(4 + (sprite.attribute & 0x03));
 
         uint8_t shiftLo = spriteShiftPatternLo[s];
@@ -738,7 +738,7 @@ void Ppu2C02::RenderSpriteLayer()
 
         const bool flipHorizontal = (attribute & 0x40) != 0;
         const bool flipVertical = (attribute & 0x80) != 0;
-        const bool behindBackground = (attribute & 0x20) != 0;
+        const bool behindBackground = ((attribute & 0x20) != 0) != invertSpritePriority;
         const uint8_t paletteId = static_cast<uint8_t>(4 + (attribute & 0x03));
 
         uint16_t tileBase;

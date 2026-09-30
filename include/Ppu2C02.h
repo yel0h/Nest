@@ -105,6 +105,9 @@ public:
     bool NmiRequested() const { return nmiRequested; }
     void ClearNmiRequest() { nmiRequested = false; }
 
+    bool GetInvertSpritePriority() const { return invertSpritePriority; }
+    void SetInvertSpritePriority(bool value) { invertSpritePriority = value; }
+
 private:
     void PlotPixel(int x, int y, const PixelColor& color);
 
@@ -182,4 +185,5 @@ private:
     bool frameComplete = false;
     bool nmiRequested = false;
     bool oddFrame = false;
+    bool invertSpritePriority = false;
 };

@@ -142,6 +142,8 @@ namespace
         y += 22;
         DrawText("[O] Toggle OAM view", x, y, 18, GRAY);
         y += 22;
+        DrawText("[I] Invert sprite/background priority", x, y, 18, GRAY);
+        y += 22;
         DrawText("Pad: Arrows/Enter/RShift/X/Z", x, y, 18, GRAY);
     }
 
@@ -311,6 +313,9 @@ int main(int argc, char** argv)
         if (IsKeyPressed(KEY_B))
             bruteForceRender = !bruteForceRender;
 
+        if (IsKeyPressed(KEY_I))
+            nes.ppu.SetInvertSpritePriority(!nes.ppu.GetInvertSpritePriority());
+
         if (IsKeyPressed(KEY_ONE)) selectedNameTable = 0;
         if (IsKeyPressed(KEY_TWO)) selectedNameTable = 1;
         if (IsKeyPressed(KEY_THREE)) selectedNameTable = 2;
@@ -365,6 +370,10 @@ int main(int argc, char** argv)
 
             if (bruteForceRender)
                 DrawText("[B] BRUTE-FORCE RENDER", kScreenMarginX, kScreenMarginY - 20, 16, ORANGE);
+
+            if (nes.ppu.GetInvertSpritePriority())
+                DrawText("[I] PRIORITY INVERTED", kScreenMarginX, kScreenMarginY + Ppu2C02::ScreenHeight * kPixelScale + 4,
+                          16, ORANGE);
         }
 
         DrawCpuPanel(nes, kScreenMarginX * 2 + Ppu2C02::ScreenWidth * kPixelScale, kScreenMarginY);
