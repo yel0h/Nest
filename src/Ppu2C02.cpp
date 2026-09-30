@@ -49,6 +49,9 @@ void Ppu2C02::ConnectCartridge(const std::shared_ptr<Cartridge>& cart)
 
 void Ppu2C02::Clock()
 {
+    if (scanline == 0 && cycle == 0 && oddFrame && RenderingEnabled())
+        cycle = 1;
+
     if (scanline >= -1 && scanline < ScreenHeight)
     {
         if (scanline == -1 && cycle == 1)
@@ -145,6 +148,7 @@ void Ppu2C02::Clock()
         {
             scanline = -1;
             frameComplete = true;
+            oddFrame = !oddFrame;
         }
     }
 }

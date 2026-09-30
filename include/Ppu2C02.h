@@ -177,4 +177,5 @@ private:
     int16_t cycle = 0;
     bool frameComplete = false;
     bool nmiRequested = false;
+    bool oddFrame = false;
 };
