@@ -250,6 +250,12 @@ void Ppu2C02::CpuWrite(uint16_t address, uint8_t data)
     }
 }
 
+OamEntry Ppu2C02::GetOamEntry(uint8_t index) const
+{
+    const size_t base = static_cast<size_t>(index & 0x3F) * 4;
+    return OamEntry{oam[base + 0], oam[base + 1], oam[base + 2], oam[base + 3]};
+}
+
 bool Ppu2C02::GetControlFlag(ControlFlag flag) const
 {
     return (controlRegister & flag) != 0;

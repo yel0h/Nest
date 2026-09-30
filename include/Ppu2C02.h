@@ -13,6 +13,14 @@ struct PixelColor
     uint8_t b = 0;
 };
 
+struct OamEntry
+{
+    uint8_t y = 0;
+    uint8_t tileId = 0;
+    uint8_t attribute = 0;
+    uint8_t x = 0;
+};
+
 class Ppu2C02
 {
 public:
@@ -67,6 +75,8 @@ public:
     void PpuWrite(uint16_t address, uint8_t data);
 
     void WriteOamByte(uint8_t address, uint8_t data) { oam[address] = data; }
+    OamEntry GetOamEntry(uint8_t index) const;
+    static constexpr int OamEntryCount = 64;
 
     const ScreenBuffer& GetScreen() const { return screen; }
     const PatternTableBuffer& GetPatternTableView(uint8_t index) const { return patternTableView[index & 0x01]; }

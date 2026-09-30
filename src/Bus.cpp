@@ -26,7 +26,12 @@ void Bus::Clock()
     ppu.Clock();
 
     if (systemClockCounter % 3 == 0)
-        cpu.Clock();
+    {
+        if (oamDmaActive)
+            StepOamDma();
+        else
+            cpu.Clock();
+    }
 
     if (ppu.NmiRequested())
     {
@@ -35,6 +40,33 @@ void Bus::Clock()
     }
 
     ++systemClockCounter;
+}
+
+void Bus::StepOamDma()
+{
+    if (oamDmaAwaitingSync)
+    {
+        if (systemClockCounter % 2 != 0)
+            oamDmaAwaitingSync = false;
+        return;
+    }
+
+    const bool readCycle = (systemClockCounter % 2 == 0);
+    if (readCycle)
+    {
+        const uint16_t sourceAddress = static_cast<uint16_t>((oamDmaPage << 8) | oamDmaOffset);
+        oamDmaLatch = CpuRead(sourceAddress);
+        return;
+    }
+
+    ppu.WriteOamByte(oamDmaOffset, oamDmaLatch);
+    ++oamDmaOffset;
+
+    if (oamDmaOffset == 0x00)
+    {
+        oamDmaActive = false;
+        oamDmaAwaitingSync = true;
+    }
 }
 
 void Bus::CpuWrite(uint16_t address, uint8_t data)
@@ -52,11 +84,9 @@ void Bus::CpuWrite(uint16_t address, uint8_t data)
     }
     else if (address == 0x4014)
     {
-        const uint16_t page = static_cast<uint16_t>(data) << 8;
-        for (uint16_t i = 0; i <= 0xFF; ++i)
-        {
-            ppu.WriteOamByte(static_cast<uint8_t>(i), CpuRead(static_cast<uint16_t>(page + i)));
-        }
+        oamDmaPage = data;
+        oamDmaOffset = 0x00;
+        oamDmaActive = true;
     }
     else if (address == 0x4016 || address == 0x4017)
     {

@@ -140,6 +140,8 @@ namespace
         y += 22;
         DrawText("[1-4] Select name table", x, y, 18, GRAY);
         y += 22;
+        DrawText("[O] Toggle OAM view", x, y, 18, GRAY);
+        y += 22;
         DrawText("Pad: Arrows/Enter/RShift/X/Z", x, y, 18, GRAY);
     }
 
@@ -198,6 +200,25 @@ namespace
             case Cartridge::Mirror::FourScreen: return "Four-Screen";
             case Cartridge::Mirror::Horizontal:
             default: return "Horizontal";
+        }
+    }
+
+    void DrawOamPanel(Bus& nes, int x, int y)
+    {
+        constexpr int entriesToShow = 26;
+
+        DrawText("OAM Sprites (first 26) [O] back to screen", x, y, 18, RAYWHITE);
+        y += 28;
+        DrawText(" # Y ID AT X", x, y, 18, LIGHTGRAY);
+        y += 20;
+
+        for (int i = 0; i < entriesToShow; ++i)
+        {
+            const OamEntry entry = nes.ppu.GetOamEntry(static_cast<uint8_t>(i));
+            const Color rowColor = entry.y < Ppu2C02::ScreenHeight ? RAYWHITE : GRAY;
+            DrawText(TextFormat("%2d $%02X $%02X $%02X $%02X", i, entry.y, entry.tileId, entry.attribute, entry.x),
+                      x, y, 18, rowColor);
+            y += 20;
         }
     }
 
@@ -265,6 +286,7 @@ int main(int argc, char** argv)
     bool showNameTables = false;
     uint8_t selectedNameTable = 0;
     bool bruteForceRender = false;
+    bool showOam = false;
 
     while (!WindowShouldClose())
     {
@@ -282,6 +304,9 @@ int main(int argc, char** argv)
 
         if (IsKeyPressed(KEY_N))
             showNameTables = !showNameTables;
+
+        if (IsKeyPressed(KEY_O))
+            showOam = !showOam;
 
         if (IsKeyPressed(KEY_B))
             bruteForceRender = !bruteForceRender;
@@ -327,6 +352,10 @@ int main(int argc, char** argv)
         if (showNameTables)
         {
             DrawNameTableIdPanel(nes, selectedNameTable, kScreenMarginX, kScreenMarginY + 30);
+        }
+        else if (showOam)
+        {
+            DrawOamPanel(nes, kScreenMarginX, kScreenMarginY + 30);
         }
         else
         {

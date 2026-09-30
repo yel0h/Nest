@@ -41,8 +41,16 @@ public:
     uint8_t CpuRead(uint16_t address, bool readOnly = false);
 
 private:
+    void StepOamDma();
+
     std::shared_ptr<Cartridge> cartridge;
     uint32_t systemClockCounter = 0;
 
     std::array<uint8_t, 2> controllerShift{};
+
+    bool oamDmaActive = false;
+    bool oamDmaAwaitingSync = true;
+    uint8_t oamDmaPage = 0x00;
+    uint8_t oamDmaOffset = 0x00;
+    uint8_t oamDmaLatch = 0x00;
 };
