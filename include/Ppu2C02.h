@@ -124,6 +124,7 @@ private:
     void RenderBackgroundPixel(int x, int16_t y);
 
     void EvaluateSpritesForScanline(int16_t y);
+    void LoadSpriteShiftRegisters(int16_t y);
     void RenderScanlineSprites(int16_t y);
 
     std::shared_ptr<Cartridge> cartridge;
@@ -168,6 +169,9 @@ private:
     std::array<SpriteSlot, 8> scanlineSprites{};
     uint8_t scanlineSpriteCount = 0;
     bool scanlineHasSpriteZero = false;
+
+    std::array<uint8_t, 8> spriteShiftPatternLo{};
+    std::array<uint8_t, 8> spriteShiftPatternHi{};
 
     ScreenBuffer screen{};
     std::array<bool, ScreenWidth * ScreenHeight> backgroundOpaque{};

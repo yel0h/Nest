@@ -127,8 +127,11 @@ void Ppu2C02::Clock()
             RenderBackgroundPixel(cycle - 1, static_cast<int16_t>(scanline));
 
         if (scanline >= 0 && cycle == 257)
-        {
             EvaluateSpritesForScanline(static_cast<int16_t>(scanline));
+
+        if (scanline >= 0 && cycle == 340)
+        {
+            LoadSpriteShiftRegisters(static_cast<int16_t>(scanline));
             RenderScanlineSprites(static_cast<int16_t>(scanline));
         }
     }
@@ -544,26 +547,16 @@ void Ppu2C02::EvaluateSpritesForScanline(int16_t y)
         SetStatusFlag(StatusFlag::SpriteOverflow, true);
 }
 
-void Ppu2C02::RenderScanlineSprites(int16_t y)
+void Ppu2C02::LoadSpriteShiftRegisters(int16_t y)
 {
-    if (!GetMaskFlag(MaskFlag::RenderSprites))
-        return;
-
     const bool tallSprites = GetControlFlag(ControlFlag::SpriteSize);
     const uint16_t spritePatternTableBase = GetControlFlag(ControlFlag::SpritePatternTable) ? 0x1000 : 0x0000;
     const int spriteHeight = tallSprites ? 16 : 8;
-    const bool showLeft = GetMaskFlag(MaskFlag::ShowSpritesLeft);
-    const bool bgEnabled = GetMaskFlag(MaskFlag::RenderBackground);
-
-    std::array<bool, ScreenWidth> pixelClaimed{};
 
     for (uint8_t s = 0; s < scanlineSpriteCount; ++s)
     {
         const SpriteSlot& sprite = scanlineSprites[s];
-        const bool flipHorizontal = (sprite.attribute & 0x40) != 0;
         const bool flipVertical = (sprite.attribute & 0x80) != 0;
-        const bool behindBackground = (sprite.attribute & 0x20) != 0;
-        const uint8_t paletteId = static_cast<uint8_t>(4 + (sprite.attribute & 0x03));
 
         int row = y - (sprite.y + 1);
         if (flipVertical)
@@ -586,19 +579,52 @@ void Ppu2C02::RenderScanlineSprites(int16_t y)
             tileBase = static_cast<uint16_t>(spritePatternTableBase + sprite.tileId * 16);
         }
 
-        const uint8_t planeLo = PpuRead(static_cast<uint16_t>(tileBase + row));
-        const uint8_t planeHi = PpuRead(static_cast<uint16_t>(tileBase + row + 8));
+        uint8_t planeLo = PpuRead(static_cast<uint16_t>(tileBase + row));
+        uint8_t planeHi = PpuRead(static_cast<uint16_t>(tileBase + row + 8));
+
+        const bool flipHorizontal = (sprite.attribute & 0x40) != 0;
+        if (flipHorizontal)
+        {
+            planeLo = ReverseBits(planeLo);
+            planeHi = ReverseBits(planeHi);
+        }
+
+        spriteShiftPatternLo[s] = planeLo;
+        spriteShiftPatternHi[s] = planeHi;
+    }
+}
+
+void Ppu2C02::RenderScanlineSprites(int16_t y)
+{
+    if (!GetMaskFlag(MaskFlag::RenderSprites))
+        return;
+
+    const bool showLeft = GetMaskFlag(MaskFlag::ShowSpritesLeft);
+    const bool bgEnabled = GetMaskFlag(MaskFlag::RenderBackground);
+
+    std::array<bool, ScreenWidth> pixelClaimed{};
+
+    for (uint8_t s = 0; s < scanlineSpriteCount; ++s)
+    {
+        const SpriteSlot& sprite = scanlineSprites[s];
+        const bool behindBackground = (sprite.attribute & 0x20) != 0;
+        const uint8_t paletteId = static_cast<uint8_t>(4 + (sprite.attribute & 0x03));
+
+        uint8_t shiftLo = spriteShiftPatternLo[s];
+        uint8_t shiftHi = spriteShiftPatternHi[s];
 
         for (int col = 0; col < 8; ++col)
         {
             const int pixelX = sprite.x + col;
+
+            const uint8_t pixelValue = static_cast<uint8_t>(((shiftHi & 0x80) >> 6) | ((shiftLo & 0x80) >> 7));
+            shiftLo <<= 1;
+            shiftHi <<= 1;
+
             if (pixelX >= ScreenWidth)
                 continue;
             if (pixelX < 8 && !showLeft)
                 continue;
-
-            const uint8_t bit = static_cast<uint8_t>(flipHorizontal ? col : (7 - col));
-            const uint8_t pixelValue = static_cast<uint8_t>(((planeHi >> bit) & 0x01) << 1 | ((planeLo >> bit) & 0x01));
             if (pixelValue == 0)
                 continue;
 
