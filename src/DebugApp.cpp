@@ -181,6 +181,8 @@ namespace
         UpdateTexture(rightTable, rightPixels.data());
 
         DrawText(TextFormat("Pattern Tables (Palette %d)", selectedPalette), x, y, 20, RAYWHITE);
+        if (nes.ppu.GetFlipPatternTableVertical())
+            DrawText("[V] TILES FLIPPED", x + 260, y + 2, 16, ORANGE);
         y += 26;
 
         const float tableSize = static_cast<float>(Ppu2C02::PatternTableSize * kPatternTableScale);
@@ -315,6 +317,9 @@ int main(int argc, char** argv)
 
         if (IsKeyPressed(KEY_I))
             nes.ppu.SetInvertSpritePriority(!nes.ppu.GetInvertSpritePriority());
+
+        if (IsKeyPressed(KEY_V))
+            nes.ppu.SetFlipPatternTableVertical(!nes.ppu.GetFlipPatternTableVertical());
 
         if (IsKeyPressed(KEY_ONE)) selectedNameTable = 0;
         if (IsKeyPressed(KEY_TWO)) selectedNameTable = 1;

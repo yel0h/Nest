@@ -108,6 +108,9 @@ public:
     bool GetInvertSpritePriority() const { return invertSpritePriority; }
     void SetInvertSpritePriority(bool value) { invertSpritePriority = value; }
 
+    bool GetFlipPatternTableVertical() const { return flipPatternTableVertical; }
+    void SetFlipPatternTableVertical(bool value) { flipPatternTableVertical = value; }
+
 private:
     void PlotPixel(int x, int y, const PixelColor& color);
 
@@ -186,4 +189,5 @@ private:
     bool nmiRequested = false;
     bool oddFrame = false;
     bool invertSpritePriority = false;
+    bool flipPatternTableVertical = false;
 };

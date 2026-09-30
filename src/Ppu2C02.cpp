@@ -816,8 +816,9 @@ void Ppu2C02::RenderPatternTable(uint8_t tableIndex, uint8_t paletteId)
                     planeLo >>= 1;
                     planeHi >>= 1;
 
+                    const int sampleRow = flipPatternTableVertical ? (tileSize - 1 - row) : row;
                     const int pixelX = tileX * tileSize + (tileSize - 1 - col);
-                    const int pixelY = tileY * tileSize + row;
+                    const int pixelY = tileY * tileSize + sampleRow;
 
                     patternTableView[tableIndex][static_cast<size_t>(pixelY) * PatternTableSize + pixelX] =
                         GetColorFromPalette(paletteId, pixelValue);
