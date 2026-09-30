@@ -58,6 +58,10 @@ void Bus::CpuWrite(uint16_t address, uint8_t data)
             ppu.WriteOamByte(static_cast<uint8_t>(i), CpuRead(static_cast<uint16_t>(page + i)));
         }
     }
+    else if (address == 0x4016 || address == 0x4017)
+    {
+        controllerShift[address & 0x0001] = controllerState[address & 0x0001];
+    }
 }
 
 uint8_t Bus::CpuRead(uint16_t address, bool readOnly)
@@ -74,6 +78,12 @@ uint8_t Bus::CpuRead(uint16_t address, bool readOnly)
     else if (address >= 0x2000 && address <= 0x3FFF)
     {
         data = ppu.CpuRead(address & 0x0007, readOnly);
+    }
+    else if (address == 0x4016 || address == 0x4017)
+    {
+        const uint8_t index = address & 0x0001;
+        data = (controllerShift[index] & 0x80) ? 0x01 : 0x00;
+        controllerShift[index] <<= 1;
     }
 
     return data;

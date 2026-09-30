@@ -41,6 +41,20 @@ namespace
         return out;
     }
 
+    uint8_t PollController1()
+    {
+        uint8_t state = 0;
+        if (IsKeyDown(KEY_X)) state |= ControllerButtonA;
+        if (IsKeyDown(KEY_Z)) state |= ControllerButtonB;
+        if (IsKeyDown(KEY_RIGHT_SHIFT)) state |= ControllerButtonSelect;
+        if (IsKeyDown(KEY_ENTER)) state |= ControllerButtonStart;
+        if (IsKeyDown(KEY_UP)) state |= ControllerButtonUp;
+        if (IsKeyDown(KEY_DOWN)) state |= ControllerButtonDown;
+        if (IsKeyDown(KEY_LEFT)) state |= ControllerButtonLeft;
+        if (IsKeyDown(KEY_RIGHT)) state |= ControllerButtonRight;
+        return state;
+    }
+
     void StepOneInstruction(Bus& nes)
     {
         do
@@ -125,6 +139,8 @@ namespace
         DrawText("[N] Toggle name tables", x, y, 18, GRAY);
         y += 22;
         DrawText("[1-4] Select name table", x, y, 18, GRAY);
+        y += 22;
+        DrawText("Pad: Arrows/Enter/RShift/X/Z", x, y, 18, GRAY);
     }
 
     void DrawPaletteSwatches(Ppu2C02& ppu, uint8_t selectedPalette, int x, int y)
@@ -274,6 +290,8 @@ int main(int argc, char** argv)
         if (IsKeyPressed(KEY_TWO)) selectedNameTable = 1;
         if (IsKeyPressed(KEY_THREE)) selectedNameTable = 2;
         if (IsKeyPressed(KEY_FOUR)) selectedNameTable = 3;
+
+        nes.controllerState[0] = PollController1();
 
         if (emulationRunning)
         {

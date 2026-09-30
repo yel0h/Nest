@@ -9,6 +9,18 @@
 
 class Cartridge;
 
+enum ControllerButton : uint8_t
+{
+    ControllerButtonA = 1 << 7,
+    ControllerButtonB = 1 << 6,
+    ControllerButtonSelect = 1 << 5,
+    ControllerButtonStart = 1 << 4,
+    ControllerButtonUp = 1 << 3,
+    ControllerButtonDown = 1 << 2,
+    ControllerButtonLeft = 1 << 1,
+    ControllerButtonRight = 1 << 0,
+};
+
 class Bus
 {
 public:
@@ -18,6 +30,8 @@ public:
     Cpu6502 cpu;
     Ppu2C02 ppu;
     std::array<uint8_t, 2 * 1024> cpuRam{};
+
+    std::array<uint8_t, 2> controllerState{};
 
     void InsertCartridge(const std::shared_ptr<Cartridge>& cart);
     void Reset();
@@ -29,4 +43,6 @@ public:
 private:
     std::shared_ptr<Cartridge> cartridge;
     uint32_t systemClockCounter = 0;
+
+    std::array<uint8_t, 2> controllerShift{};
 };
