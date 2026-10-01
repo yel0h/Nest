@@ -37,4 +37,7 @@ if(NES_BUILD_DEBUGGER)
 
     add_executable(nes_debugger src/DebugApp.cpp)
     target_link_libraries(nes_debugger PRIVATE nes_core raylib)
+
+    add_executable(nes_sound_demo src/SoundDemo.cpp)
+    target_link_libraries(nes_sound_demo PRIVATE raylib)
 endif()
