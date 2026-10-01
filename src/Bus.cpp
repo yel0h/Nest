@@ -18,12 +18,21 @@ void Bus::InsertCartridge(const std::shared_ptr<Cartridge>& cart)
 void Bus::Reset()
 {
     cpu.Reset();
+    apu.Reset();
     systemClockCounter = 0;
+    audioPhase = 0;
 }
 
-void Bus::Clock()
+void Bus::SetAudioSampleRate(uint32_t hz)
+{
+    audioSampleRate = hz;
+    audioPhase = 0;
+}
+
+bool Bus::Clock()
 {
     ppu.Clock();
+    apu.Clock();
 
     if (systemClockCounter % 3 == 0)
     {
@@ -40,6 +49,14 @@ void Bus::Clock()
     }
 
     ++systemClockCounter;
+
+    audioPhase += audioSampleRate;
+    if (audioPhase < kSystemClockHz)
+        return false;
+
+    audioPhase -= kSystemClockHz;
+    audioSample = apu.GetOutputSample();
+    return true;
 }
 
 void Bus::StepOamDma()
@@ -82,15 +99,19 @@ void Bus::CpuWrite(uint16_t address, uint8_t data)
     {
         ppu.CpuWrite(address & 0x0007, data);
     }
+    else if ((address >= 0x4000 && address <= 0x4013) || address == 0x4015 || address == 0x4017)
+    {
+        apu.CpuWrite(address, data);
+    }
     else if (address == 0x4014)
     {
         oamDmaPage = data;
         oamDmaOffset = 0x00;
         oamDmaActive = true;
     }
-    else if (address == 0x4016 || address == 0x4017)
+    else if (address == 0x4016)
     {
-        controllerShift[address & 0x0001] = controllerState[address & 0x0001];
+        controllerShift = controllerState;
     }
 }
 

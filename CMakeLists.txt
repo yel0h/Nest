@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_library(nes_core STATIC
+    src/Apu2A03.cpp
     src/Bus.cpp
     src/Cpu6502.cpp
     src/AddressingModes.cpp

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -146,6 +147,41 @@ int main()
     std::cout << "Backward BNE loop: mem[0x0400] = " << static_cast<int>(branchTest->CpuRead(0x0400)) << " (expected 5)\n";
     std::cout << "Backward BNE loop: PC after loop = 0x" << std::hex << branchTest->cpu.pc << std::dec
               << " (expected 0x800d)\n";
+
+    auto apuTest = std::make_unique<Bus>();
+    apuTest->InsertCartridge(std::make_shared<Cartridge>());
+    apuTest->SetAudioSampleRate(44100);
+
+    auto collectSamples = [&](int sampleCount, double& minOut, double& maxOut)
+    {
+        minOut = 1e9;
+        maxOut = -1e9;
+        for (int collected = 0; collected < sampleCount;)
+        {
+            if (!apuTest->Clock())
+                continue;
+            minOut = std::min(minOut, apuTest->AudioSample());
+            maxOut = std::max(maxOut, apuTest->AudioSample());
+            ++collected;
+        }
+    };
+
+    double lowest = 0.0;
+    double highest = 0.0;
+
+    apuTest->CpuWrite(0x4000, 0xBF);
+    apuTest->CpuWrite(0x4002, 0xFD);
+    apuTest->CpuWrite(0x4003, 0x00);
+    collectSamples(2000, lowest, highest);
+    std::cout << "\nAPU channel disabled: max sample = " << highest << " (expected 0)\n";
+
+    apuTest->CpuWrite(0x4015, 0x01);
+    collectSamples(2000, lowest, highest);
+    std::cout << "APU pulse 1 enabled: swings " << lowest << " .. " << highest << " (expected 0 .. >0)\n";
+
+    apuTest->CpuWrite(0x4015, 0x00);
+    collectSamples(2000, lowest, highest);
+    std::cout << "APU pulse 1 disabled again: max sample = " << highest << " (expected 0)\n";
 
     return 0;
 }
