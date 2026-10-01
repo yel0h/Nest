@@ -4,6 +4,8 @@
 
 #include "raylib.h"
 
+double SamplePulseWave(double frequency, double time, double duty, int harmonics, double timeStep);
+
 class AudioSynth
 {
 public:
