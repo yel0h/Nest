@@ -38,6 +38,10 @@ if(NES_BUILD_DEBUGGER)
     add_executable(nes_debugger src/DebugApp.cpp)
     target_link_libraries(nes_debugger PRIVATE nes_core raylib)
 
+    add_library(nes_audio STATIC src/AudioSynth.cpp)
+    target_include_directories(nes_audio PUBLIC include)
+    target_link_libraries(nes_audio PUBLIC raylib)
+
     add_executable(nes_sound_demo src/SoundDemo.cpp)
-    target_link_libraries(nes_sound_demo PRIVATE raylib)
+    target_link_libraries(nes_sound_demo PRIVATE nes_audio)
 endif()
