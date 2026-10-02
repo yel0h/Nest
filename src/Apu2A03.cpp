@@ -2,14 +2,19 @@
 
 namespace
 {
-    constexpr uint8_t kDutyPatterns[4][8] = {
-        {0, 1, 0, 0, 0, 0, 0, 0},
-        {0, 1, 1, 0, 0, 0, 0, 0},
-        {0, 1, 1, 1, 1, 0, 0, 0},
-        {1, 0, 0, 1, 1, 1, 1, 1},
+    constexpr uint8_t kDutyPatterns[4] = {
+        0b00000010,
+        0b00000110,
+        0b00011110,
+        0b11111001,
     };
 
     constexpr uint16_t kMinAudibleReload = 8;
+
+    constexpr uint16_t kFrameStep1 = 3729;
+    constexpr uint16_t kFrameStep2 = 7457;
+    constexpr uint16_t kFrameStep3 = 11186;
+    constexpr uint16_t kFrameStep4 = 14915;
 }
 
 void Apu2A03::PulseChannel::Reset()
@@ -17,51 +22,60 @@ void Apu2A03::PulseChannel::Reset()
     *this = PulseChannel{};
 }
 
+void Apu2A03::PulseChannel::LoadDutyPattern()
+{
+    sequencer.sequence = kDutyPatterns[dutyMode];
+}
+
 void Apu2A03::PulseChannel::WriteRegister(uint8_t index, uint8_t data)
 {
     switch (index)
     {
     case 0:
-        dutyMode = data >> 6;
+    {
+        const uint8_t newDuty = data >> 6;
+        if (newDuty != dutyMode)
+        {
+            dutyMode = newDuty;
+            LoadDutyPattern();
+        }
         volume = data & 0x0F;
         break;
+    }
     case 1:
         break;
     case 2:
-        timerReload = (timerReload & 0x0700) | data;
+        sequencer.reload = (sequencer.reload & 0x0700) | data;
         break;
     case 3:
-        timerReload = static_cast<uint16_t>(((data & 0x07) << 8) | (timerReload & 0x00FF));
-        sequencePos = 0;
+        sequencer.reload = static_cast<uint16_t>(((data & 0x07) << 8) | (sequencer.reload & 0x00FF));
+        sequencer.timer = sequencer.reload;
+        LoadDutyPattern();
         break;
     }
 }
 
 void Apu2A03::PulseChannel::ClockTimer()
 {
-    if (timer == 0)
+    sequencer.Clock(enabled, [](uint8_t& pattern)
     {
-        timer = timerReload;
-        sequencePos = (sequencePos + 1) & 0x07;
-    }
-    else
-    {
-        --timer;
-    }
+        pattern = static_cast<uint8_t>((pattern >> 1) | (pattern << 7));
+    });
 }
 
 uint8_t Apu2A03::PulseChannel::Output() const
 {
-    if (!enabled || timerReload < kMinAudibleReload)
+    if (!enabled || sequencer.reload < kMinAudibleReload)
         return 0;
 
-    return kDutyPatterns[dutyMode][sequencePos] ? volume : 0;
+    return sequencer.output ? volume : 0;
 }
 
 void Apu2A03::Reset()
 {
     pulse1.Reset();
     clockDivider = 0;
+    frameClockCounter = 0;
 }
 
 void Apu2A03::CpuWrite(uint16_t address, uint8_t data)
@@ -76,12 +90,41 @@ void Apu2A03::CpuWrite(uint16_t address, uint8_t data)
     }
 }
 
+void Apu2A03::ClockQuarterFrame()
+{
+}
+
+void Apu2A03::ClockHalfFrame()
+{
+}
+
 void Apu2A03::Clock()
 {
     if (++clockDivider < kSystemClocksPerApuClock)
         return;
 
     clockDivider = 0;
+
+    ++frameClockCounter;
+    switch (frameClockCounter)
+    {
+    case kFrameStep1:
+        ClockQuarterFrame();
+        break;
+    case kFrameStep2:
+        ClockQuarterFrame();
+        ClockHalfFrame();
+        break;
+    case kFrameStep3:
+        ClockQuarterFrame();
+        break;
+    case kFrameStep4:
+        ClockQuarterFrame();
+        ClockHalfFrame();
+        frameClockCounter = 0;
+        break;
+    }
+
     pulse1.ClockTimer();
 }
 
