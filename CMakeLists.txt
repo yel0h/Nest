@@ -37,7 +37,7 @@ if(NES_BUILD_DEBUGGER)
     FetchContent_MakeAvailable(raylib)
 
     add_executable(nes_debugger src/DebugApp.cpp)
-    target_link_libraries(nes_debugger PRIVATE nes_core raylib)
+    target_link_libraries(nes_debugger PRIVATE nes_core nes_audio raylib)
 
     add_library(nes_audio STATIC src/AudioSynth.cpp)
     target_include_directories(nes_audio PUBLIC include)

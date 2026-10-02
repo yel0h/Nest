@@ -2,14 +2,48 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <mutex>
 
 #include "raylib.h"
 
+#include "AudioSynth.h"
 #include "Bus.h"
 #include "Cartridge.h"
 
 namespace
 {
+    struct EmulationShared
+    {
+        std::mutex mutex;
+        Bus* bus = nullptr;
+        bool running = false;
+        bool audioDriven = true;
+        double heldSample = 0.0;
+    };
+    EmulationShared g_emu;
+
+    double SoundOut(int channel, double, double)
+    {
+        std::lock_guard<std::mutex> lock(g_emu.mutex);
+
+        if (channel == AudioSynth::kChannelLeft)
+        {
+            g_emu.heldSample = 0.0;
+            if (g_emu.bus && g_emu.running && g_emu.audioDriven)
+            {
+                while (!g_emu.bus->Clock())
+                {
+                }
+                g_emu.heldSample = g_emu.bus->AudioSample();
+
+                if (g_emu.bus->ppu.FrameComplete())
+                    g_emu.bus->ppu.ClearFrameComplete();
+            }
+        }
+
+        return g_emu.heldSample;
+    }
+
     constexpr int kPixelScale = 2;
     constexpr int kScreenMarginX = 20;
     constexpr int kScreenMarginY = 20;
@@ -131,6 +165,8 @@ namespace
         DrawText("[F] Step frame", x, y, 18, GRAY);
         y += 22;
         DrawText("[SPACE] Run / pause", x, y, 18, GRAY);
+        y += 22;
+        DrawText("[M] Audio / frame-timer clock", x, y, 18, GRAY);
         y += 22;
         DrawText("[R] Reset", x, y, 18, GRAY);
         y += 22;
@@ -275,6 +311,18 @@ int main(int argc, char** argv)
     InitWindow(kWindowWidth, kWindowHeight, "Nest - NES Debugger");
     SetTargetFPS(60);
 
+    g_emu.bus = &nes;
+    auto synth = std::make_unique<AudioSynth>();
+    if (IsAudioDeviceReady())
+    {
+        nes.SetAudioSampleRate(synth->SampleRate());
+        synth->SetSampleFunction(SoundOut);
+    }
+    else
+    {
+        g_emu.audioDriven = false;
+    }
+
     Image blankFrame = GenImageColor(Ppu2C02::ScreenWidth, Ppu2C02::ScreenHeight, BLACK);
     Texture2D screenTexture = LoadTextureFromImage(blankFrame);
     UnloadImage(blankFrame);
@@ -294,8 +342,16 @@ int main(int argc, char** argv)
 
     while (!WindowShouldClose())
     {
+        std::unique_lock<std::mutex> busLock(g_emu.mutex);
+
         if (IsKeyPressed(KEY_SPACE))
             emulationRunning = !emulationRunning;
+
+        if (IsKeyPressed(KEY_M) && IsAudioDeviceReady())
+        {
+            g_emu.audioDriven = !g_emu.audioDriven;
+            residualTime = 0.0f;
+        }
 
         if (IsKeyPressed(KEY_R))
         {
@@ -328,7 +384,12 @@ int main(int argc, char** argv)
 
         nes.controllerState[0] = PollController1();
 
-        if (emulationRunning)
+        g_emu.running = emulationRunning;
+
+        if (emulationRunning && g_emu.audioDriven)
+        {
+        }
+        else if (emulationRunning)
         {
             constexpr float kFrameSeconds = 1.0f / 60.0f;
             if (residualTime > 0.0f)
@@ -376,6 +437,9 @@ int main(int argc, char** argv)
             if (bruteForceRender)
                 DrawText("[B] BRUTE-FORCE RENDER", kScreenMarginX, kScreenMarginY - 20, 16, ORANGE);
 
+            DrawText(g_emu.audioDriven ? "[M] CLOCK: AUDIO" : "[M] CLOCK: FRAME TIMER",
+                     kScreenMarginX + 260, kScreenMarginY - 20, 16, ORANGE);
+
             if (nes.ppu.GetInvertSpritePriority())
                 DrawText("[I] PRIORITY INVERTED", kScreenMarginX, kScreenMarginY + Ppu2C02::ScreenHeight * kPixelScale + 4,
                           16, ORANGE);
@@ -386,8 +450,12 @@ int main(int argc, char** argv)
         DrawPatternPanel(nes, leftPatternTexture, rightPatternTexture, selectedPalette, kScreenMarginX,
                           kScreenMarginY * 2 + Ppu2C02::ScreenHeight * kPixelScale);
 
+        busLock.unlock();
         EndDrawing();
     }
+
+    synth.reset();
+    g_emu.bus = nullptr;
 
     UnloadTexture(leftPatternTexture);
     UnloadTexture(rightPatternTexture);
