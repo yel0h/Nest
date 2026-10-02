@@ -14,6 +14,12 @@ public:
 
     double GetOutputSample();
 
+    bool DmcNeedsSample() const { return dmc.NeedsSample(); }
+    uint16_t DmcSampleAddress() const { return dmc.currentAddress; }
+    void DmcReceiveSample(uint8_t data) { dmc.ReceiveSample(data); }
+
+    bool IrqPending() const { return dmc.irqFlag; }
+
 private:
     struct LengthCounter
     {
@@ -116,6 +122,45 @@ private:
         double Output();
     };
 
+    struct DmcChannel
+    {
+        bool irqEnabled = false;
+        bool loop = false;
+        bool irqFlag = false;
+
+        uint32_t periodClocks = 0;
+        uint32_t countdown = 0;
+
+        uint16_t sampleAddress = 0xC000;
+        uint16_t sampleLength = 1;
+        uint16_t currentAddress = 0xC000;
+        uint16_t bytesRemaining = 0;
+
+        uint8_t sampleBuffer = 0;
+        bool bufferFilled = false;
+
+        uint8_t shiftRegister = 0;
+        uint8_t bitsRemaining = 8;
+        bool silent = true;
+
+        uint8_t outputLevel = 0;
+
+        double levelSum = 0.0;
+        uint32_t levelSamples = 0;
+
+        void Reset();
+        void WriteRegister(uint8_t index, uint8_t data);
+        void SetEnabled(bool value);
+
+        void RestartSample();
+        bool NeedsSample() const { return !bufferFilled && bytesRemaining > 0; }
+        void ReceiveSample(uint8_t data);
+
+        void ClockSystem();
+        void ClockOutputUnit();
+        double Output();
+    };
+
     static constexpr double kSystemClockHz = 5369318.0;
     static constexpr uint8_t kSystemClocksPerApuClock = 6;
 
@@ -126,6 +171,7 @@ private:
     PulseChannel pulse2{false};
     TriangleChannel triangle;
     NoiseChannel noise;
+    DmcChannel dmc;
 
     uint8_t clockDivider = 0;
     uint16_t frameClockCounter = 0;

@@ -28,8 +28,12 @@ target_link_libraries(nes6502 PRIVATE nes_core)
 add_executable(nes_mapper_tests src/MapperTests.cpp)
 target_link_libraries(nes_mapper_tests PRIVATE nes_core)
 
+add_executable(nes_apu_tests src/ApuTests.cpp)
+target_link_libraries(nes_apu_tests PRIVATE nes_core)
+
 enable_testing()
 add_test(NAME mapper_tests COMMAND nes_mapper_tests)
+add_test(NAME apu_tests COMMAND nes_apu_tests)
 
 option(NES_BUILD_DEBUGGER "Build the raylib-based visual debugger" ON)
 if(NES_BUILD_DEBUGGER)

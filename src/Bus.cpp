@@ -21,6 +21,7 @@ void Bus::Reset()
     apu.Reset();
     systemClockCounter = 0;
     audioPhase = 0;
+    dmcStallCycles = 0;
 }
 
 void Bus::SetAudioSampleRate(uint32_t hz)
@@ -37,20 +38,30 @@ bool Bus::Clock()
     ppu.Clock();
     apu.Clock();
 
+    if (apu.DmcNeedsSample())
+    {
+        apu.DmcReceiveSample(CpuRead(apu.DmcSampleAddress()));
+        dmcStallCycles += kDmcStallCpuCycles;
+    }
+
     if (systemClockCounter % 3 == 0)
     {
         if (oamDmaActive)
             StepOamDma();
+        else if (dmcStallCycles > 0)
+            --dmcStallCycles;
         else
             cpu.Clock();
     }
+
+    const bool irqLine = apu.IrqPending() || (cartridge && cartridge->IrqPending());
 
     if (ppu.NmiRequested())
     {
         ppu.ClearNmiRequest();
         cpu.Nmi();
     }
-    else if (cartridge && cpu.InstructionComplete() && cartridge->IrqPending())
+    else if (irqLine && cpu.InstructionComplete())
     {
         cpu.Irq();
     }

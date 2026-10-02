@@ -18,6 +18,13 @@ namespace
         4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068,
     };
 
+    constexpr uint16_t kDmcPeriods[16] = {
+        428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54,
+    };
+
+    constexpr uint16_t kDmcSampleBase = 0xC000;
+    constexpr uint8_t kDmcLevelMax = 127;
+
     constexpr uint16_t kMinAudibleReload = 8;
     constexpr int kMaxSweepTarget = 0x7FF;
 
@@ -293,12 +300,126 @@ double Apu2A03::NoiseChannel::Output()
     return level;
 }
 
+void Apu2A03::DmcChannel::Reset()
+{
+    *this = DmcChannel{};
+    periodClocks = kDmcPeriods[0] * kSystemClocksPerCpuClock;
+    countdown = periodClocks;
+}
+
+void Apu2A03::DmcChannel::WriteRegister(uint8_t index, uint8_t data)
+{
+    switch (index)
+    {
+    case 0:
+        irqEnabled = (data & 0x80) != 0;
+        if (!irqEnabled)
+            irqFlag = false;
+        loop = (data & 0x40) != 0;
+        periodClocks = kDmcPeriods[data & 0x0F] * kSystemClocksPerCpuClock;
+        break;
+    case 1:
+        outputLevel = data & kDmcLevelMax;
+        break;
+    case 2:
+        sampleAddress = static_cast<uint16_t>(kDmcSampleBase + data * 64);
+        break;
+    case 3:
+        sampleLength = static_cast<uint16_t>(data * 16 + 1);
+        break;
+    }
+}
+
+void Apu2A03::DmcChannel::SetEnabled(bool value)
+{
+    irqFlag = false;
+
+    if (!value)
+        bytesRemaining = 0;
+    else if (bytesRemaining == 0)
+        RestartSample();
+}
+
+void Apu2A03::DmcChannel::RestartSample()
+{
+    currentAddress = sampleAddress;
+    bytesRemaining = sampleLength;
+}
+
+void Apu2A03::DmcChannel::ReceiveSample(uint8_t data)
+{
+    sampleBuffer = data;
+    bufferFilled = true;
+
+    currentAddress = static_cast<uint16_t>((currentAddress + 1) | 0x8000);
+
+    if (--bytesRemaining > 0)
+        return;
+
+    if (loop)
+        RestartSample();
+    else if (irqEnabled)
+        irqFlag = true;
+}
+
+void Apu2A03::DmcChannel::ClockOutputUnit()
+{
+    if (!silent)
+    {
+        if ((shiftRegister & 0x01) != 0)
+        {
+            if (outputLevel <= kDmcLevelMax - 2)
+                outputLevel += 2;
+        }
+        else if (outputLevel >= 2)
+        {
+            outputLevel -= 2;
+        }
+        shiftRegister >>= 1;
+    }
+
+    if (--bitsRemaining > 0)
+        return;
+
+    bitsRemaining = 8;
+    silent = !bufferFilled;
+    if (bufferFilled)
+    {
+        shiftRegister = sampleBuffer;
+        bufferFilled = false;
+    }
+}
+
+void Apu2A03::DmcChannel::ClockSystem()
+{
+    if (countdown > 0)
+        --countdown;
+
+    if (countdown == 0)
+    {
+        countdown = periodClocks;
+        ClockOutputUnit();
+    }
+
+    levelSum += outputLevel;
+    ++levelSamples;
+}
+
+double Apu2A03::DmcChannel::Output()
+{
+    const double level = levelSamples > 0 ? levelSum / levelSamples : outputLevel;
+    levelSum = 0.0;
+    levelSamples = 0;
+    return level;
+}
+
 void Apu2A03::Reset()
 {
     pulse1.Reset();
     pulse2.Reset();
     triangle.Reset();
     noise.Reset();
+    dmc.Reset();
     clockDivider = 0;
     frameClockCounter = 0;
     fiveStepMode = false;
@@ -326,8 +447,13 @@ void Apu2A03::CpuWrite(uint16_t address, uint8_t data)
     {
         noise.WriteRegister(static_cast<uint8_t>(address & 0x0003), data);
     }
+    else if (address >= 0x4010 && address <= 0x4013)
+    {
+        dmc.WriteRegister(static_cast<uint8_t>(address & 0x0003), data);
+    }
     else if (address == 0x4015)
     {
+        dmc.SetEnabled((data & 0x10) != 0);
         pulse1.length.SetEnabled((data & 0x01) != 0);
         pulse2.length.SetEnabled((data & 0x02) != 0);
         triangle.length.SetEnabled((data & 0x04) != 0);
@@ -355,6 +481,8 @@ uint8_t Apu2A03::CpuRead(uint16_t address)
     if (pulse2.length.count > 0) status |= 0x02;
     if (triangle.length.count > 0) status |= 0x04;
     if (noise.length.count > 0) status |= 0x08;
+    if (dmc.bytesRemaining > 0) status |= 0x10;
+    if (dmc.irqFlag) status |= 0x80;
     return status;
 }
 
@@ -381,6 +509,7 @@ void Apu2A03::Clock()
 {
     secondsSinceLastSample += 1.0 / kSystemClockHz;
     noise.ClockSystem();
+    dmc.ClockSystem();
 
     if (++clockDivider < kSystemClocksPerApuClock)
         return;
@@ -424,7 +553,9 @@ double Apu2A03::GetOutputSample()
     const double pulseLevel = pulse1.Output(elapsed) + pulse2.Output(elapsed);
     const double pulseOut = pulseLevel > 0.0 ? 95.88 / (8128.0 / pulseLevel + 100.0) : 0.0;
 
-    const double tndLevel = triangle.Output(elapsed) / 8227.0 + noise.Output() / 12241.0;
+    const double tndLevel = triangle.Output(elapsed) / 8227.0
+                          + noise.Output() / 12241.0
+                          + dmc.Output() / 22638.0;
     const double tndOut = tndLevel > 0.0 ? 159.79 / (1.0 / tndLevel + 100.0) : 0.0;
 
     const double mixed = pulseOut + tndOut;

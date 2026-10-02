@@ -56,6 +56,9 @@ private:
     uint32_t audioPhase = 0;
     double audioSample = 0.0;
 
+    static constexpr uint8_t kDmcStallCpuCycles = 4;
+    uint8_t dmcStallCycles = 0;
+
     std::array<uint8_t, 2> controllerShift{};
 
     bool oamDmaActive = false;
