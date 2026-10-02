@@ -25,6 +25,9 @@ void Bus::Reset()
 
 void Bus::SetAudioSampleRate(uint32_t hz)
 {
+    if (hz == 0)
+        return;
+
     audioSampleRate = hz;
     audioPhase = 0;
 }
