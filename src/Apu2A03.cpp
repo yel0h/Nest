@@ -1,15 +1,20 @@
 #include "Apu2A03.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace
 {
-    constexpr uint8_t kDutyPatterns[4] = {
-        0b00000010,
-        0b00000110,
-        0b00011110,
-        0b11111001,
-    };
+    constexpr double kDutyCycles[4] = { 0.125, 0.25, 0.5, 0.75 };
 
     constexpr uint16_t kMinAudibleReload = 8;
+
+    constexpr double kCpuClockHz = 5369318.0 / 3.0;
+    constexpr double kTimerPeriodsPerCycle = 16.0;
+
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr int kMaxHarmonics = 32;
+    constexpr double kHarmonicCeilingHz = 20000.0;
 
     constexpr uint16_t kFrameStep1 = 3729;
     constexpr uint16_t kFrameStep2 = 7457;
@@ -17,14 +22,29 @@ namespace
     constexpr uint16_t kFrameStep4 = 14915;
 }
 
+double Apu2A03::PulseOscillator::Sample(double time) const
+{
+    if (frequency <= 0.0)
+        return 0.0;
+
+    double phase = time * frequency;
+    phase -= std::floor(phase);
+
+    const int harmonics = std::min(kMaxHarmonics, static_cast<int>(kHarmonicCeilingHz / frequency));
+
+    double level = dutyCycle;
+    for (int n = 1; n <= harmonics; ++n)
+    {
+        const double weight = 2.0 * std::sin(n * kPi * dutyCycle) / (n * kPi);
+        level += weight * std::cos(2.0 * kPi * n * (phase - dutyCycle / 2.0));
+    }
+
+    return level * amplitude;
+}
+
 void Apu2A03::PulseChannel::Reset()
 {
     *this = PulseChannel{};
-}
-
-void Apu2A03::PulseChannel::LoadDutyPattern()
-{
-    sequencer.sequence = kDutyPatterns[dutyMode];
 }
 
 void Apu2A03::PulseChannel::WriteRegister(uint8_t index, uint8_t data)
@@ -32,43 +52,30 @@ void Apu2A03::PulseChannel::WriteRegister(uint8_t index, uint8_t data)
     switch (index)
     {
     case 0:
-    {
-        const uint8_t newDuty = data >> 6;
-        if (newDuty != dutyMode)
-        {
-            dutyMode = newDuty;
-            LoadDutyPattern();
-        }
+        dutyMode = data >> 6;
         volume = data & 0x0F;
         break;
-    }
     case 1:
         break;
     case 2:
-        sequencer.reload = (sequencer.reload & 0x0700) | data;
+        timerReload = (timerReload & 0x0700) | data;
         break;
     case 3:
-        sequencer.reload = static_cast<uint16_t>(((data & 0x07) << 8) | (sequencer.reload & 0x00FF));
-        sequencer.timer = sequencer.reload;
-        LoadDutyPattern();
+        timerReload = static_cast<uint16_t>(((data & 0x07) << 8) | (timerReload & 0x00FF));
         break;
     }
 }
 
-void Apu2A03::PulseChannel::ClockTimer()
+double Apu2A03::PulseChannel::Output(double time) const
 {
-    sequencer.Clock(enabled, [](uint8_t& pattern)
-    {
-        pattern = static_cast<uint8_t>((pattern >> 1) | (pattern << 7));
-    });
-}
+    if (!enabled || timerReload < kMinAudibleReload)
+        return 0.0;
 
-uint8_t Apu2A03::PulseChannel::Output() const
-{
-    if (!enabled || sequencer.reload < kMinAudibleReload)
-        return 0;
-
-    return sequencer.output ? volume : 0;
+    PulseOscillator oscillator;
+    oscillator.frequency = kCpuClockHz / (kTimerPeriodsPerCycle * (timerReload + 1));
+    oscillator.dutyCycle = kDutyCycles[dutyMode];
+    oscillator.amplitude = volume;
+    return oscillator.Sample(time);
 }
 
 void Apu2A03::Reset()
@@ -77,6 +84,7 @@ void Apu2A03::Reset()
     pulse2.Reset();
     clockDivider = 0;
     frameClockCounter = 0;
+    globalTime = 0.0;
 }
 
 void Apu2A03::CpuWrite(uint16_t address, uint8_t data)
@@ -106,6 +114,8 @@ void Apu2A03::ClockHalfFrame()
 
 void Apu2A03::Clock()
 {
+    globalTime += 1.0 / kSystemClockHz;
+
     if (++clockDivider < kSystemClocksPerApuClock)
         return;
 
@@ -130,14 +140,11 @@ void Apu2A03::Clock()
         frameClockCounter = 0;
         break;
     }
-
-    pulse1.ClockTimer();
-    pulse2.ClockTimer();
 }
 
 double Apu2A03::GetOutputSample() const
 {
-    const double pulseLevel = pulse1.Output() + pulse2.Output();
+    const double pulseLevel = pulse1.Output(globalTime) + pulse2.Output(globalTime);
     if (pulseLevel == 0.0)
         return 0.0;
 
