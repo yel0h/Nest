@@ -25,6 +25,8 @@ namespace
 
     constexpr int kCyclesPerScanline = 341;
     constexpr int kScanlinesPerFrame = 261;
+    constexpr int kSpriteFetchStartCycle = 261;
+    constexpr int kSpriteFetchEndCycle = 317;
 
     uint8_t ReverseBits(uint8_t value)
     {
@@ -90,7 +92,7 @@ void Ppu2C02::Clock()
                 {
                     const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
                     const uint16_t fineY = (vramAddress >> 12) & 0x0007;
-                    bgNextTilePlaneLo = PpuRead(static_cast<uint16_t>(patternTableBase + bgNextTileId * 16 + fineY));
+                    bgNextTilePlaneLo = FetchPattern(static_cast<uint16_t>(patternTableBase + bgNextTileId * 16 + fineY));
                     break;
                 }
 
@@ -98,7 +100,7 @@ void Ppu2C02::Clock()
                 {
                     const uint16_t patternTableBase = GetControlFlag(ControlFlag::BackgroundPatternTable) ? 0x1000 : 0x0000;
                     const uint16_t fineY = (vramAddress >> 12) & 0x0007;
-                    bgNextTilePlaneHi = PpuRead(static_cast<uint16_t>(patternTableBase + bgNextTileId * 16 + fineY + 8));
+                    bgNextTilePlaneHi = FetchPattern(static_cast<uint16_t>(patternTableBase + bgNextTileId * 16 + fineY + 8));
                     break;
                 }
 
@@ -129,11 +131,14 @@ void Ppu2C02::Clock()
         if (scanline >= 0 && cycle == 257)
             EvaluateSpritesForScanline(static_cast<int16_t>(scanline));
 
-        if (scanline >= 0 && cycle == 340)
+        if (cycle >= kSpriteFetchStartCycle && cycle <= kSpriteFetchEndCycle &&
+            ((cycle - kSpriteFetchStartCycle) % 8) == 0)
         {
-            LoadSpriteShiftRegisters(static_cast<int16_t>(scanline));
-            RenderScanlineSprites(static_cast<int16_t>(scanline));
+            FetchSpriteSlot(scanline, static_cast<uint8_t>((cycle - kSpriteFetchStartCycle) / 8));
         }
+
+        if (scanline >= 0 && cycle == 340)
+            RenderScanlineSprites(static_cast<int16_t>(scanline));
     }
     else if (scanline == ScreenHeight + 1 && cycle == 1)
     {
@@ -142,6 +147,7 @@ void Ppu2C02::Clock()
             nmiRequested = true;
     }
 
+    ++ppuClock;
     ++cycle;
     if (cycle >= kCyclesPerScanline)
     {
@@ -315,6 +321,10 @@ namespace
     uint8_t ResolveNameTableIndex(uint16_t offset, Cartridge::Mirror mirror)
     {
         const uint8_t quadrant = static_cast<uint8_t>(offset >> 10);
+        if (mirror == Cartridge::Mirror::SingleScreenLow)
+            return 0;
+        if (mirror == Cartridge::Mirror::SingleScreenHigh)
+            return 1;
         if (mirror == Cartridge::Mirror::Vertical)
             return quadrant & 0x01;
         return quadrant >> 1;
@@ -547,51 +557,63 @@ void Ppu2C02::EvaluateSpritesForScanline(int16_t y)
         SetStatusFlag(StatusFlag::SpriteOverflow, true);
 }
 
-void Ppu2C02::LoadSpriteShiftRegisters(int16_t y)
+void Ppu2C02::FetchSpriteSlot(int16_t y, uint8_t slot)
 {
     const bool tallSprites = GetControlFlag(ControlFlag::SpriteSize);
     const uint16_t spritePatternTableBase = GetControlFlag(ControlFlag::SpritePatternTable) ? 0x1000 : 0x0000;
     const int spriteHeight = tallSprites ? 16 : 8;
 
-    for (uint8_t s = 0; s < scanlineSpriteCount; ++s)
+    if (y < 0 || slot >= scanlineSpriteCount)
     {
-        const SpriteSlot& sprite = scanlineSprites[s];
-        const bool flipVertical = (sprite.attribute & 0x80) != 0;
-
-        int row = y - (sprite.y + 1);
-        if (flipVertical)
-            row = spriteHeight - 1 - row;
-
-        uint16_t tileBase;
-        if (tallSprites)
-        {
-            const uint16_t table = (sprite.tileId & 0x01) ? 0x1000 : 0x0000;
-            uint8_t tileIndex = sprite.tileId & 0xFE;
-            if (row >= 8)
-            {
-                tileIndex = static_cast<uint8_t>(tileIndex + 1);
-                row -= 8;
-            }
-            tileBase = static_cast<uint16_t>(table + tileIndex * 16);
-        }
-        else
-        {
-            tileBase = static_cast<uint16_t>(spritePatternTableBase + sprite.tileId * 16);
-        }
-
-        uint8_t planeLo = PpuRead(static_cast<uint16_t>(tileBase + row));
-        uint8_t planeHi = PpuRead(static_cast<uint16_t>(tileBase + row + 8));
-
-        const bool flipHorizontal = (sprite.attribute & 0x40) != 0;
-        if (flipHorizontal)
-        {
-            planeLo = ReverseBits(planeLo);
-            planeHi = ReverseBits(planeHi);
-        }
-
-        spriteShiftPatternLo[s] = planeLo;
-        spriteShiftPatternHi[s] = planeHi;
+        const uint16_t dummyBase = tallSprites ? 0x1FE0 : static_cast<uint16_t>(spritePatternTableBase + 0xFF * 16);
+        FetchPattern(dummyBase);
+        return;
     }
+
+    const SpriteSlot& sprite = scanlineSprites[slot];
+    const bool flipVertical = (sprite.attribute & 0x80) != 0;
+
+    int row = y - (sprite.y + 1);
+    if (flipVertical)
+        row = spriteHeight - 1 - row;
+
+    uint16_t tileBase;
+    if (tallSprites)
+    {
+        const uint16_t table = (sprite.tileId & 0x01) ? 0x1000 : 0x0000;
+        uint8_t tileIndex = sprite.tileId & 0xFE;
+        if (row >= 8)
+        {
+            tileIndex = static_cast<uint8_t>(tileIndex + 1);
+            row -= 8;
+        }
+        tileBase = static_cast<uint16_t>(table + tileIndex * 16);
+    }
+    else
+    {
+        tileBase = static_cast<uint16_t>(spritePatternTableBase + sprite.tileId * 16);
+    }
+
+    uint8_t planeLo = FetchPattern(static_cast<uint16_t>(tileBase + row));
+    uint8_t planeHi = FetchPattern(static_cast<uint16_t>(tileBase + row + 8));
+
+    const bool flipHorizontal = (sprite.attribute & 0x40) != 0;
+    if (flipHorizontal)
+    {
+        planeLo = ReverseBits(planeLo);
+        planeHi = ReverseBits(planeHi);
+    }
+
+    spriteShiftPatternLo[slot] = planeLo;
+    spriteShiftPatternHi[slot] = planeHi;
+}
+
+uint8_t Ppu2C02::FetchPattern(uint16_t address)
+{
+    if (cartridge && RenderingEnabled())
+        cartridge->NotifyPpuFetch(address, ppuClock);
+
+    return PpuRead(address);
 }
 
 void Ppu2C02::RenderScanlineSprites(int16_t y)

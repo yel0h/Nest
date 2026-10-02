@@ -5,22 +5,24 @@ Mapper000::Mapper000(uint8_t prgBanks, uint8_t chrBanks)
 {
 }
 
-bool Mapper000::CpuMapRead(uint16_t address, uint32_t& mappedAddress)
+Mapper::CpuTarget Mapper000::CpuMapRead(uint16_t address, uint32_t& mappedAddress)
 {
     if (address < 0x8000)
-        return false;
+        return CpuTarget::None;
 
     mappedAddress = address & (prgBankCount > 1 ? 0x7FFF : 0x3FFF);
-    return true;
+    return CpuTarget::PrgRom;
 }
 
-bool Mapper000::CpuMapWrite(uint16_t address, uint32_t& mappedAddress)
+Mapper::CpuTarget Mapper000::CpuMapWrite(uint16_t address, uint8_t data, uint32_t& mappedAddress)
 {
+    (void)data;
+
     if (address < 0x8000)
-        return false;
+        return CpuTarget::None;
 
     mappedAddress = address & (prgBankCount > 1 ? 0x7FFF : 0x3FFF);
-    return true;
+    return CpuTarget::PrgRom;
 }
 
 bool Mapper000::PpuMapRead(uint16_t address, uint32_t& mappedAddress) const

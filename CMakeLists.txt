@@ -14,11 +14,22 @@ add_library(nes_core STATIC
     src/Cartridge.cpp
     src/Mapper.cpp
     src/Mapper000.cpp
+    src/Mapper001.cpp
+    src/Mapper002.cpp
+    src/Mapper003.cpp
+    src/Mapper004.cpp
+    src/Mapper007.cpp
 )
 target_include_directories(nes_core PUBLIC include)
 
 add_executable(nes6502 src/main.cpp)
 target_link_libraries(nes6502 PRIVATE nes_core)
+
+add_executable(nes_mapper_tests src/MapperTests.cpp)
+target_link_libraries(nes_mapper_tests PRIVATE nes_core)
+
+enable_testing()
+add_test(NAME mapper_tests COMMAND nes_mapper_tests)
 
 option(NES_BUILD_DEBUGGER "Build the raylib-based visual debugger" ON)
 if(NES_BUILD_DEBUGGER)

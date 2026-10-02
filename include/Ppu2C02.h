@@ -130,7 +130,8 @@ private:
     void RenderBackgroundPixel(int x, int16_t y);
 
     void EvaluateSpritesForScanline(int16_t y);
-    void LoadSpriteShiftRegisters(int16_t y);
+    void FetchSpriteSlot(int16_t y, uint8_t slot);
+    uint8_t FetchPattern(uint16_t address);
     void RenderScanlineSprites(int16_t y);
 
     std::shared_ptr<Cartridge> cartridge;
@@ -187,6 +188,7 @@ private:
     int16_t cycle = 0;
     bool frameComplete = false;
     bool nmiRequested = false;
+    uint64_t ppuClock = 0;
     bool oddFrame = false;
     bool invertSpritePriority = false;
     bool flipPatternTableVertical = false;

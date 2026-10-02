@@ -238,6 +238,8 @@ namespace
         {
             case Cartridge::Mirror::Vertical: return "Vertical";
             case Cartridge::Mirror::FourScreen: return "Four-Screen";
+            case Cartridge::Mirror::SingleScreenLow: return "Single (low)";
+            case Cartridge::Mirror::SingleScreenHigh: return "Single (high)";
             case Cartridge::Mirror::Horizontal:
             default: return "Horizontal";
         }

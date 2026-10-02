@@ -50,6 +50,10 @@ bool Bus::Clock()
         ppu.ClearNmiRequest();
         cpu.Nmi();
     }
+    else if (cartridge && cpu.InstructionComplete() && cartridge->IrqPending())
+    {
+        cpu.Irq();
+    }
 
     ++systemClockCounter;
 
