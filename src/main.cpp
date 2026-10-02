@@ -183,5 +183,25 @@ int main()
     collectSamples(2000, lowest, highest);
     std::cout << "APU pulse 1 disabled again: max sample = " << highest << " (expected 0)\n";
 
+    apuTest->CpuWrite(0x4004, 0xBF);
+    apuTest->CpuWrite(0x4006, 0xFD);
+    apuTest->CpuWrite(0x4007, 0x00);
+    collectSamples(2000, lowest, highest);
+    std::cout << "APU pulse 2 configured but disabled: max sample = " << highest << " (expected 0)\n";
+
+    apuTest->CpuWrite(0x4015, 0x02);
+    collectSamples(2000, lowest, highest);
+    const double pulse2Peak = highest;
+    std::cout << "APU pulse 2 enabled: swings " << lowest << " .. " << highest << " (expected 0 .. >0)\n";
+
+    apuTest->CpuWrite(0x4015, 0x01);
+    collectSamples(2000, lowest, highest);
+    std::cout << "APU pulse 2 disabled, pulse 1 on: max sample = " << highest << " (expected >0)\n";
+
+    apuTest->CpuWrite(0x4015, 0x03);
+    collectSamples(2000, lowest, highest);
+    std::cout << "APU pulse 1 + 2 mixed: peak exceeds pulse 2 alone = " << (highest > pulse2Peak)
+              << " (expected 1)\n";
+
     return 0;
 }

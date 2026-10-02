@@ -62,6 +62,7 @@ private:
     void ClockHalfFrame();
 
     PulseChannel pulse1;
+    PulseChannel pulse2;
 
     uint8_t clockDivider = 0;
     uint16_t frameClockCounter = 0;
