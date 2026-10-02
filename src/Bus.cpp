@@ -133,6 +133,10 @@ uint8_t Bus::CpuRead(uint16_t address, bool readOnly)
     {
         data = ppu.CpuRead(address & 0x0007, readOnly);
     }
+    else if (address == 0x4015)
+    {
+        data = apu.CpuRead(address);
+    }
     else if (address == 0x4016 || address == 0x4017)
     {
         const uint8_t index = address & 0x0001;
