@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "FastTrig.h"
+
 namespace
 {
     constexpr double kDutyCycles[4] = { 0.125, 0.25, 0.5, 0.75 };
@@ -35,8 +37,8 @@ double Apu2A03::PulseOscillator::Sample(double time) const
     double level = dutyCycle;
     for (int n = 1; n <= harmonics; ++n)
     {
-        const double weight = 2.0 * std::sin(n * kPi * dutyCycle) / (n * kPi);
-        level += weight * std::cos(2.0 * kPi * n * (phase - dutyCycle / 2.0));
+        const double weight = 2.0 * FastTrig::SinTurns(0.5 * n * dutyCycle) / (n * kPi);
+        level += weight * FastTrig::CosTurns(n * (phase - dutyCycle / 2.0));
     }
 
     return level * amplitude;

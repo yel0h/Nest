@@ -4,6 +4,8 @@
 
 #include <cmath>
 
+#include "FastTrig.h"
+
 double SamplePulseWave(double frequency, double time, double duty, int harmonics, double timeStep)
 {
     constexpr double kPi = 3.14159265358979323846;
@@ -14,8 +16,8 @@ double SamplePulseWave(double frequency, double time, double duty, int harmonics
     double sum = 0.0;
     for (int n = 1; n <= harmonics && n * frequency < nyquist; ++n)
     {
-        const double weight = std::sin(n * kPi * duty) / n;
-        sum += weight * std::cos(2.0 * kPi * n * (cycles - 0.5 * duty));
+        const double weight = FastTrig::SinTurns(0.5 * n * duty) / n;
+        sum += weight * FastTrig::CosTurns(n * (cycles - 0.5 * duty));
     }
 
     return (4.0 / kPi) * sum;
