@@ -10,6 +10,12 @@
 #include "Mapper003.h"
 #include "Mapper004.h"
 #include "Mapper007.h"
+#include "Mapper009.h"
+#include "Mapper011.h"
+#include "Mapper066.h"
+#include "Mapper071.h"
+#include "Mapper079.h"
+#include "Mapper180.h"
 
 namespace
 {
@@ -172,6 +178,24 @@ bool Cartridge::CreateMapper()
         break;
     case 7:
         mapper = std::make_shared<Mapper007>(prgBanks, chrBanks);
+        break;
+    case 9:
+        mapper = std::make_shared<Mapper009>(prgBanks, chrBanks);
+        break;
+    case 11:
+        mapper = std::make_shared<Mapper011>(prgBanks, chrBanks);
+        break;
+    case 66:
+        mapper = std::make_shared<Mapper066>(prgBanks, chrBanks);
+        break;
+    case 71:
+        mapper = std::make_shared<Mapper071>(prgBanks, chrBanks);
+        break;
+    case 79:
+        mapper = std::make_shared<Mapper079>(prgBanks, chrBanks);
+        break;
+    case 180:
+        mapper = std::make_shared<Mapper180>(prgBanks, chrBanks);
         break;
     default:
         mapper = nullptr;

@@ -19,6 +19,12 @@ add_library(nes_core STATIC
     src/Mapper003.cpp
     src/Mapper004.cpp
     src/Mapper007.cpp
+    src/Mapper009.cpp
+    src/Mapper011.cpp
+    src/Mapper066.cpp
+    src/Mapper071.cpp
+    src/Mapper079.cpp
+    src/Mapper180.cpp
 )
 target_include_directories(nes_core PUBLIC include)
 

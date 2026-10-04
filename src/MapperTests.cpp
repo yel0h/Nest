@@ -197,6 +197,106 @@ namespace
         CHECK(cart->GetMirror() == Cartridge::Mirror::SingleScreenLow);
     }
 
+    void TestMmc2()
+    {
+        auto cart = Load(BuildImage(9, 8, 4));
+        CHECK(cart->ImageValid());
+
+        CHECK(PrgAt(*cart, 0xA000) == 13);
+        CHECK(PrgAt(*cart, 0xC000) == 14);
+        CHECK(PrgAt(*cart, 0xE000) == 15);
+
+        cart->CpuWrite(0xA000, 0x03);
+        CHECK(PrgAt(*cart, 0x8000) == 3);
+        CHECK(PrgAt(*cart, 0xA000) == 13);
+
+        cart->CpuWrite(0xB000, 1);
+        cart->CpuWrite(0xC000, 2);
+        cart->CpuWrite(0xD000, 3);
+        cart->CpuWrite(0xE000, 4);
+
+        uint64_t clock = 0;
+        CHECK(ChrAt(*cart, 0x0000) == 8);
+        CHECK(ChrAt(*cart, 0x1000) == 16);
+
+        cart->NotifyPpuFetch(0x0FD8, clock++);
+        CHECK(ChrAt(*cart, 0x0000) == 8);
+        cart->NotifyPpuFetch(0x0000, clock++);
+        CHECK(ChrAt(*cart, 0x0000) == 4);
+        CHECK(ChrAt(*cart, 0x0FFF) == 7);
+
+        cart->NotifyPpuFetch(0x1FE8, clock++);
+        cart->NotifyPpuFetch(0x1000, clock++);
+        CHECK(ChrAt(*cart, 0x1000) == 16);
+        cart->NotifyPpuFetch(0x1FD8, clock++);
+        cart->NotifyPpuFetch(0x1000, clock++);
+        CHECK(ChrAt(*cart, 0x1000) == 12);
+        CHECK(ChrAt(*cart, 0x0000) == 4);
+
+        cart->NotifyPpuFetch(0x0FE8, clock++);
+        cart->NotifyPpuFetch(0x0000, clock++);
+        CHECK(ChrAt(*cart, 0x0000) == 8);
+
+        CHECK(cart->GetMirror() == Cartridge::Mirror::Horizontal);
+        cart->CpuWrite(0xF000, 0x00);
+        CHECK(cart->GetMirror() == Cartridge::Mirror::Vertical);
+    }
+
+    void TestColorDreams()
+    {
+        auto cart = Load(BuildImage(11, 4, 4));
+        cart->CpuWrite(0x8000, 0x21);
+        CHECK(PrgAt(*cart, 0x8000) == 4);
+        CHECK(PrgAt(*cart, 0xFFFF) == 7);
+        CHECK(ChrAt(*cart, 0x0000) == 16);
+    }
+
+    void TestGxrom()
+    {
+        auto cart = Load(BuildImage(66, 4, 4));
+        cart->CpuWrite(0x8000, 0x11);
+        CHECK(PrgAt(*cart, 0x8000) == 4);
+        CHECK(ChrAt(*cart, 0x0000) == 8);
+        CHECK(ChrAt(*cart, 0x1FFF) == 15);
+    }
+
+    void TestCamerica()
+    {
+        auto cart = Load(BuildImage(71, 8, 0));
+        CHECK(PrgAt(*cart, 0xC000) == 14);
+        CHECK(cart->GetMirror() == Cartridge::Mirror::Horizontal);
+
+        cart->CpuWrite(0xC000, 0x03);
+        CHECK(PrgAt(*cart, 0x8000) == 6);
+        CHECK(PrgAt(*cart, 0xC000) == 14);
+
+        cart->CpuWrite(0x9000, 0x10);
+        CHECK(cart->GetMirror() == Cartridge::Mirror::SingleScreenHigh);
+
+        CHECK(cart->PpuWrite(0x0200, 0x66));
+        CHECK(ChrAt(*cart, 0x0200) == 0x66);
+    }
+
+    void TestNina()
+    {
+        auto cart = Load(BuildImage(79, 2, 4));
+        CHECK(cart->CpuWrite(0x4100, 0x0B));
+        CHECK(PrgAt(*cart, 0x8000) == 0);
+        CHECK(ChrAt(*cart, 0x0000) == 24);
+        CHECK(!cart->CpuWrite(0x4000, 0x00));
+        CHECK(ChrAt(*cart, 0x0000) == 24);
+    }
+
+    void TestUnromReversed()
+    {
+        auto cart = Load(BuildImage(180, 8, 0));
+        cart->CpuWrite(0x8000, 0x05);
+        CHECK(PrgAt(*cart, 0x8000) == 0);
+        CHECK(PrgAt(*cart, 0xC000) == 10);
+        CHECK(cart->PpuWrite(0x0010, 0x12));
+        CHECK(ChrAt(*cart, 0x0010) == 0x12);
+    }
+
     void RiseA12(Cartridge& cart, uint64_t& clock)
     {
         cart.NotifyPpuFetch(0x0000, clock);
@@ -375,6 +475,12 @@ int main()
     TestUxrom();
     TestCnrom();
     TestAxrom();
+    TestMmc2();
+    TestColorDreams();
+    TestGxrom();
+    TestCamerica();
+    TestNina();
+    TestUnromReversed();
     TestMmc3Banking();
     TestMmc3PrgRam();
     TestMmc3IrqCounter();
