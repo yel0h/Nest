@@ -400,6 +400,8 @@ Cartridge::Mirror Ppu2C02::GetMirrorMode() const
 
 PixelColor Ppu2C02::GetColorFromPalette(uint8_t paletteId, uint8_t pixelValue)
 {
+    if (pixelValue == 0)
+        paletteId = 0;
     const uint16_t entryAddress = static_cast<uint16_t>(0x3F00 + (paletteId << 2) + pixelValue);
     return palette[PpuRead(entryAddress) & 0x3F];
 }

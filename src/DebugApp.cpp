@@ -47,7 +47,7 @@ namespace
     constexpr int kPixelScale = 2;
     constexpr int kScreenMarginX = 20;
     constexpr int kScreenMarginY = 20;
-    constexpr int kSidePanelWidth = 260;
+    constexpr int kSidePanelWidth = 360;
 
     constexpr int kPatternTableScale = 1;
     constexpr int kPatternTableGap = 12;
